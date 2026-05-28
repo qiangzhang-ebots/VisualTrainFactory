@@ -1,3 +1,4 @@
+import multiprocessing
 from pathlib import Path
 import contextlib
 import io
@@ -5,6 +6,7 @@ import json
 import sys
 import threading
 import time
+import shutil
 
 from ImageView import ImageView
 from s0_dataprocessing import find_images, process_data
@@ -214,6 +216,15 @@ class VisualTrainFactoryWindow(QMainWindow):
         self._visual_train_current_index = -1
         self._refresh_visual_train_image_list(force=True)
         self._show_visual_train_current_image()
+        # 当用户在文件树中选择文件夹时，实时把所选文件夹路径写入推理页的输入框（如果存在）
+        try:
+            selected_path = self._get_selected_folder_tree_path()
+            if selected_path and hasattr(self, 'inferImgForlderLineEdit') and self.inferImgForlderLineEdit is not None:
+                self.inferImgForlderLineEdit.blockSignals(True)
+                self.inferImgForlderLineEdit.setText(selected_path)
+                self.inferImgForlderLineEdit.blockSignals(False)
+        except Exception:
+            pass
 
     def _load_recent_work_directories(self):
         """从配置文件读取最近使用过的工作目录列表。"""
@@ -297,8 +308,157 @@ class VisualTrainFactoryWindow(QMainWindow):
         self.splitTrainDataBtn.clicked.connect(self.split_TrainData_slot)
         self.lastImgBtn.clicked.connect(self.visual_train_last_image_slot)
         self.nextImgBtn.clicked.connect(self.visual_train_next_image_slot)
-        if hasattr(self, "tabWidgetMain"):
-            self.tabWidgetMain.currentChanged.connect(self._handle_main_tab_changed)
+        self.tabWidgetMain.currentChanged.connect(self._handle_main_tab_changed)
+
+        self.YoloTrainBtn.clicked.connect(self.yolo_train_slot)
+        self.HRNetTrainBtn.clicked.connect(self.hrnet_train_slot) 
+        # 批量推理按钮
+        self.batchInferBtn.clicked.connect(self.batch_infer_slot)
+
+    def yolo_train_slot(self):
+        """YOLO训练按钮的槽函数，调用s3_train.py的trainYolo。"""
+        import traceback
+        try:
+            from s3_train import trainYolo, _get_log_name
+            work_dir = self.workDirectoryLineEdit.currentText().strip()
+            if not work_dir:
+                self._append_log_message("请先选择工作目录！")
+                return
+            label_map = self.get_label_id_mapping()
+            if not label_map:
+                self._append_log_message("请先扫描并填写标签ID映射！")
+                return
+            # 训练参数从界面控件读取
+            epochs = 100
+            img_size = 640
+            batch_size = 16
+            gpu = '0'
+            hflipRatio = 0.0
+            vflipRatio = 0.0
+            works = 8
+            # 读取hflipRatio
+            if hasattr(self, 'hflipLineEdit'):
+                try:
+                    hflipRatio = float(self.hflipLineEdit.text())
+                except Exception:
+                    pass
+            # 读取vflipRatio
+            if hasattr(self, 'vflipLineEdit'):
+                try:
+                    vflipRatio = float(self.vflipLineEdit.text())
+                except Exception:
+                    pass
+            # 读取works
+            if hasattr(self, 'spinBoxYoloWorkers'):
+                try:
+                    works = int(self.spinBoxYoloWorkers.value())
+                except Exception:
+                    pass
+            # 读取epochs
+            if hasattr(self, 'spinBoxYoloEpochs'):
+                try:
+                    epochs = int(self.spinBoxYoloEpochs.value())
+                except Exception:
+                    pass
+            # 读取img_size
+            if hasattr(self, 'spinBoxYoloImgSize'):
+                try:
+                    img_size = int(self.spinBoxYoloImgSize.value())
+                except Exception:
+                    pass
+            # 读取batch_size（如有控件可补充）
+            if hasattr(self, 'spinBoxYoloBatch'):
+                try:
+                    batch_size = int(self.spinBoxYoloBatch.value())
+                except Exception:
+                    pass
+
+            if hasattr(self, 'lineEditYoloDevice'):
+                gpu_text = self.lineEditYoloDevice.text()
+                if gpu_text:
+                    gpu = gpu_text
+            logName = _get_log_name()
+            self._append_log_message("开始YOLO训练...")
+            # 调用训练
+            trainYolo(
+                work_dir, label_map, epochs, batch_size, img_size,
+                gpu=gpu, logName=logName,
+                workers=works, hflipRatio=hflipRatio, vflipRatio=vflipRatio
+            )
+            self._append_log_message("YOLO训练已完成。")
+        except Exception as e:
+            self._append_log_message(f"YOLO训练启动失败: {e}\n{traceback.format_exc()}")
+
+    def hrnet_train_slot(self):
+        """HRNet 训练按钮的槽函数，调用 s3_train 中的 trainHRNet。
+
+        s3_train.trainHRNet 的签名是:
+            trainHRNet(workspace, epochs, batch_size, img_size, gpu, logName)
+        因此不需要传入标签映射，直接按签名调用。
+        """
+        import traceback
+        try:
+            from s3_train import trainHRNet, _get_log_name
+            work_dir = self.workDirectoryLineEdit.currentText().strip()
+            if not work_dir:
+                self._append_log_message("请先选择工作目录！")
+                return
+
+            # 默认训练参数，可由界面控件覆盖
+            epochs = 100
+            img_size = 640
+            batch_size = 16
+            gpu = '0'
+
+            if hasattr(self, 'spinBoxHrnetEpochs'):
+                try:
+                    epochs = int(self.spinBoxHrnetEpochs.value())
+                except Exception:
+                    pass
+
+            if hasattr(self, 'HRNetImgSizeLineEdit'):
+                try:
+                    img_size = int(self.HRNetImgSizeLineEdit.text())
+                except Exception:
+                    pass
+
+            if hasattr(self, 'spinBoxHrnetBatch'):
+                try:
+                    batch_size = int(self.spinBoxHrnetBatch.value())
+                except Exception:
+                    pass
+
+            if hasattr(self, 'lineEditHrnetGpu'):
+                gpu_text = self.lineEditHrnetGpu.text()
+                if gpu_text:
+                    gpu = gpu_text
+
+            gpu_ids = [item.strip() for item in str(gpu).split(',') if item.strip()]
+            if len(gpu_ids) > 1:
+                per_gpu_batch = max(1, (batch_size + len(gpu_ids) - 1) // len(gpu_ids))
+                self._append_log_message(
+                    'HRNet 将以多卡分布式模式启动: '
+                    f'devices={gpu_ids}, 总 batch={batch_size}, 每卡 batch={per_gpu_batch}'
+                )
+            else:
+                self._append_log_message(f'HRNet 将以单卡模式启动: device={gpu}, batch={batch_size}')
+
+            logName = _get_log_name()
+            self._append_log_message("开始HRNet训练...")
+
+            # 按 s3_train.trainHRNet 的签名调用
+            trainHRNet(
+                work_dir,
+                epochs,
+                batch_size,
+                img_size,
+                gpu,
+                logName,
+            )
+
+            self._append_log_message("HRNet训练已完成。")
+        except Exception as e:
+            self._append_log_message(f"HRNet训练启动失败: {e}\n{traceback.format_exc()}")
 
     def _configure_visual_train_view(self):
         """为训练数据可视化页插入 ImageView，并准备翻页状态。"""
@@ -533,7 +693,7 @@ class VisualTrainFactoryWindow(QMainWindow):
                 continue
             value = line_edit.text().strip()
             if value:
-                mapping[label_text] = value
+                mapping[label_text] = int(value)
         return mapping
 
     def _get_work_directory_path(self):
@@ -728,6 +888,73 @@ class VisualTrainFactoryWindow(QMainWindow):
             if self._visual_train_current_index < 0 and self._visual_train_image_pairs:
                 self._visual_train_current_index = 0
             self._show_visual_train_current_image()
+        elif tab_name == 'tabInference':
+            # 切换到推理与误差分析页时，扫描 workspace 下 runs/pose 和 runs/HRNet 的结果，填充下拉框
+            self._refresh_inference_model_lists()
+
+    def _refresh_inference_model_lists(self):
+        """扫描 workspace 下的 runs/pose 和 runs/HRNet 文件夹，按时间倒序填充推理页的下拉框。
+
+        - `comboBox` 用于 Yolo，显示 runs/pose 下的子文件夹，最近的在最前面。
+        - `comboBox_2` 用于 HRNet，首项为 'None'（表示不使用 Yolo 结果），随后为 runs/HRNet 下的子文件夹，最近的在最前面。
+        每个下拉项会把完整路径保存在 itemData 中，便于后续使用。
+        """
+        work_dir = self._get_work_directory_path()
+        # 先清空，确保 UI 可用
+        try:
+            if hasattr(self, 'YoloModelCombbox') and self.YoloModelCombbox is not None:
+                self.YoloModelCombbox.clear()
+            if hasattr(self, 'HRNetModelCombbox') and self.HRNetModelCombbox is not None:
+                self.HRNetModelCombbox.clear()
+        except Exception:
+            pass
+
+        if work_dir is None:
+            return
+
+        runs_dir = work_dir / 'runs'
+
+        # YOLO: runs/pose
+        try:
+            yolo_root = runs_dir / 'pose'
+            yolo_items = []
+            if yolo_root.exists() and yolo_root.is_dir():
+                for child in yolo_root.iterdir():
+                    if child.is_dir():
+                        stat = child.stat()
+                        yolo_items.append((child.name, child, stat.st_mtime))
+            # 按修改时间倒序
+            yolo_items.sort(key=lambda x: x[2], reverse=True)
+            if hasattr(self, 'YoloModelCombbox') and self.YoloModelCombbox is not None:
+                for name, path_obj, _ in yolo_items:
+                    try:
+                        self.YoloModelCombbox.addItem(name, str(path_obj))
+                    except Exception:
+                        # 兼容不同 Qt 版本的签名
+                        self.YoloModelCombbox.addItem(name)
+        except Exception:
+            pass
+
+        # HRNet: runs/HRNet
+        try:
+            hr_root = runs_dir / 'HRNet'
+            hr_items = []
+            if hr_root.exists() and hr_root.is_dir():
+                for child in hr_root.iterdir():
+                    if child.is_dir():
+                        stat = child.stat()
+                        hr_items.append((child.name, child, stat.st_mtime))
+            hr_items.sort(key=lambda x: x[2], reverse=True)
+            if hasattr(self, 'HRNetModelCombbox') and self.HRNetModelCombbox is not None:
+                # 首项为 None
+                self.HRNetModelCombbox.addItem('None', '')
+                for name, path_obj, _ in hr_items:
+                    try:
+                        self.HRNetModelCombbox.addItem(name, str(path_obj))
+                    except Exception:
+                        self.HRNetModelCombbox.addItem(name)
+        except Exception:
+            pass
 
     def _get_datasets_directory(self):
         work_directory_path = self._get_work_directory_path()
@@ -769,7 +996,7 @@ class VisualTrainFactoryWindow(QMainWindow):
                 # rel 必须是 group_data 根目录的相对路径，和数据划分时完全一致
                 try:
                     rel = img.relative_to(group_data_dir)
-                    flat_name = _flatten_rel_path(rel)
+                    flat_name = rel.name
                 except ValueError:
                     continue
                 found = False
@@ -1192,9 +1419,155 @@ class VisualTrainFactoryWindow(QMainWindow):
 
         self._set_work_directory(selected_directory)
 
+    def batch_infer_slot(self):
+        """批量推理槽：在后台加载模型并对指定文件夹下的所有图片进行推理，保存结果并输出到日志。"""
+        
+        label_map = self.get_label_id_mapping()
+        if not label_map:
+            self._append_log_message("请先扫描并填写标签ID映射！")
+            return
+        
+        class_names = {v: k for k, v in label_map.items()}
+       
+        import traceback
+        try:
+            from s4_inference import InferenceModel, draw_results, save_result
+        except Exception as e:
+            self._append_log_message(f'无法导入 s4_inference: {e}')
+            return
+
+        work_dir = self._get_work_directory_path()
+        if work_dir is None:
+            self._append_log_message('请先选择有效的工作目录。')
+            return
+
+        # 输入图片文件夹：优先使用推理页的输入框，否则使用 work_dir/datasets/images/test
+        infer_folder_text = ''
+        if hasattr(self, 'inferImgForlderLineEdit') and self.inferImgForlderLineEdit is not None:
+            infer_folder_text = self.inferImgForlderLineEdit.text().strip()
+        
+        if infer_folder_text == '':
+            self._append_log_message('请先选择批处理图片目录。')
+            return
+
+        if not infer_folder_text:
+            infer_folder = work_dir / 'datasets' / 'images' / 'test'
+        else:
+            infer_folder = Path(infer_folder_text).expanduser()
+
+        if not infer_folder.exists() or not infer_folder.is_dir():
+            self._append_log_message(f'未找到推理输入目录: {infer_folder}')
+            return
+
+        # 选择 YOLO 和 HRNet 模型路径（下拉项的 itemData 存储路径）
+        yolo_model_path = None
+        if hasattr(self, 'YoloModelCombbox') and self.YoloModelCombbox is not None:
+            try:
+                yolo_model_path = self.YoloModelCombbox.currentData()
+            except Exception:
+                yolo_model_path = None
+
+        hrnet_model_path = None
+        if hasattr(self, 'HRNetModelCombbox') and self.HRNetModelCombbox is not None:
+            try:
+                hrnet_model_path = self.HRNetModelCombbox.currentData()
+            except Exception:
+                hrnet_model_path = None
+
+        if not yolo_model_path:
+            self._append_log_message('请在推理页选择一个 YOLO 模型（runs/pose 下的子目录）。')
+            return
+
+        # 输出目录可以通过 UI 指定（batchInferRetFolderLineEdit），否则回退到 work_dir/inference
+        ret_folder_text = ''
+        if hasattr(self, 'batchInferRetFolderLineEdit') and self.batchInferRetFolderLineEdit is not None:
+            try:
+                ret_folder_text = self.batchInferRetFolderLineEdit.text().strip()
+            except Exception:
+                ret_folder_text = ''
+
+        base_ret_dir = work_dir / ret_folder_text
+        shutil.rmtree(base_ret_dir, ignore_errors=True)  # 清空旧结果
+        out_json_dir = base_ret_dir / 'json'
+        out_vis_dir = base_ret_dir / 'vis'
+        out_json_dir.mkdir(parents=True, exist_ok=True)
+        out_vis_dir.mkdir(parents=True, exist_ok=True)
+
+        model = InferenceModel()
+
+        def _run_batch():
+            try:
+                self._append_log_message(f'加载 YOLO 模型: {yolo_model_path}')
+                model.load_yolo_model(str(yolo_model_path+"/weights/best.pt"))
+                if hrnet_model_path:
+                    try:
+                        self._append_log_message(f'加载 HRNet 模型: {hrnet_model_path}')
+                        model.load_hrnet_model(str(hrnet_model_path))
+                    except Exception as exc:
+                        self._append_log_message(f'加载 HRNet 失败，继续仅使用 YOLO: {exc}')
+
+                images = [p for p in sorted(infer_folder.rglob('*')) if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES]
+                total = len(images)
+                if total == 0:
+                    self._append_log_message(f'未在 {infer_folder} 找到图片。')
+                    return
+
+                self._append_log_message(f'开始对 {total} 张图片进行推理...')
+
+                # 根据 UI 复选框决定是否保存 JSON 和/或可视化图片
+                save_json_enabled = False
+                save_img_enabled = False
+                try:
+                    if hasattr(self, 'saveJsonCB') and self.saveJsonCB is not None:
+                        save_json_enabled = bool(self.saveJsonCB.isChecked())
+                except Exception:
+                    save_json_enabled = False
+
+                try:
+                    if hasattr(self, 'saveImgCB') and self.saveImgCB is not None:
+                        save_img_enabled = bool(self.saveImgCB.isChecked())
+                except Exception:
+                    save_img_enabled = False
+
+                for idx, img_path in enumerate(images, start=1):
+                    try:
+                        ret = model.predict(str(img_path))
+                        json_path = out_json_dir / (img_path.stem + '.json')
+
+                        if save_json_enabled:
+                            try:
+                                save_result(str(img_path), img_path.name, ret, str(json_path), class_names=class_names)
+                            except Exception:
+                                pass
+
+                        if save_img_enabled:
+                            try:
+                                vis = draw_results(str(img_path), ret, class_names=class_names)
+                                vis_path = out_vis_dir / (img_path.stem + '.png')
+                                try:
+                                    import cv2
+                                    cv2.imwrite(str(vis_path), vis)
+                                except Exception:
+                                    pass
+                            except Exception:
+                                pass
+
+                        if idx % 10 == 0 or idx == total:
+                            self._append_log_message(f'推理进度: {idx} / {total}')
+                    except Exception as exc:
+                        self._append_log_message(f'处理文件 {img_path} 失败: {exc}')
+
+                self._append_log_message(f'批量推理完成，结果保存在: {out_json_dir} 与 {out_vis_dir}')
+            except Exception as exc:
+                self._append_log_message(f'批量推理失败: {exc}\n{traceback.format_exc()}')
+
+        worker = threading.Thread(target=_run_batch, daemon=True)
+        worker.start()
+
 
 def main():
     """程序入口：创建应用并显示主窗口。"""
+    multiprocessing.freeze_support()
     app = QApplication(sys.argv)
     window = VisualTrainFactoryWindow()
     window.show()

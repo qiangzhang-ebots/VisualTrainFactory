@@ -304,7 +304,7 @@ QStatusBar {
       </widget>
       <widget class="QTabWidget" name="tabWidgetMain">
        <property name="currentIndex">
-        <number>4</number>
+        <number>5</number>
        </property>
        <widget class="QWidget" name="tabDataPrepare">
         <attribute name="title">
@@ -659,7 +659,7 @@ p, li { white-space: pre-wrap; }
          <item>
           <widget class="QTabWidget" name="tabWidgetTrainTypes">
            <property name="currentIndex">
-            <number>1</number>
+            <number>0</number>
            </property>
            <widget class="QWidget" name="tabTrainYolo">
             <attribute name="title">
@@ -672,20 +672,38 @@ p, li { white-space: pre-wrap; }
                 <string>YOLO 参数</string>
                </property>
                <layout class="QGridLayout" name="gridLayout_trainYoloConfig">
-                <item row="0" column="0">
-                 <widget class="QLabel" name="labelYoloWeights">
+                <item row="2" column="0">
+                 <widget class="QLabel" name="labelYoloImgSize">
                   <property name="text">
-                   <string>预训练权重</string>
+                   <string>Img Size</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="3" column="0">
+                 <widget class="QLabel" name="labelYoloBatch">
+                  <property name="text">
+                   <string>Batch</string>
                   </property>
                  </widget>
                 </item>
                 <item row="0" column="1">
-                 <widget class="QLineEdit" name="lineEditYoloWeights"/>
+                 <widget class="QLineEdit" name="lineEditYoloWeights">
+                  <property name="text">
+                   <string>yolo26n-pose.pt</string>
+                  </property>
+                 </widget>
                 </item>
                 <item row="1" column="0">
                  <widget class="QLabel" name="labelYoloEpochs">
                   <property name="text">
                    <string>Epochs</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="5" column="0">
+                 <widget class="QLabel" name="labelYoloWorkers">
+                  <property name="text">
+                   <string>Workers</string>
                   </property>
                  </widget>
                 </item>
@@ -699,13 +717,6 @@ p, li { white-space: pre-wrap; }
                   </property>
                  </widget>
                 </item>
-                <item row="2" column="0">
-                 <widget class="QLabel" name="labelYoloImgSize">
-                  <property name="text">
-                   <string>Img Size</string>
-                  </property>
-                 </widget>
-                </item>
                 <item row="2" column="1">
                  <widget class="QSpinBox" name="spinBoxYoloImgSize">
                   <property name="maximum">
@@ -716,41 +727,17 @@ p, li { white-space: pre-wrap; }
                   </property>
                  </widget>
                 </item>
-                <item row="3" column="0">
-                 <widget class="QLabel" name="labelYoloBatch">
-                  <property name="text">
-                   <string>Batch</string>
-                  </property>
-                 </widget>
-                </item>
-                <item row="3" column="1">
-                 <widget class="QSpinBox" name="spinBoxYoloBatch">
-                  <property name="maximum">
-                   <number>1024</number>
-                  </property>
-                  <property name="value">
-                   <number>16</number>
-                  </property>
-                 </widget>
-                </item>
                 <item row="4" column="0">
                  <widget class="QLabel" name="labelYoloDevice">
                   <property name="text">
-                   <string>Device</string>
+                   <string>GPU</string>
                   </property>
                  </widget>
                 </item>
                 <item row="4" column="1">
                  <widget class="QLineEdit" name="lineEditYoloDevice">
                   <property name="text">
-                   <string>0</string>
-                  </property>
-                 </widget>
-                </item>
-                <item row="5" column="0">
-                 <widget class="QLabel" name="labelYoloWorkers">
-                  <property name="text">
-                   <string>Workers</string>
+                   <string>0,1</string>
                   </property>
                  </widget>
                 </item>
@@ -764,25 +751,56 @@ p, li { white-space: pre-wrap; }
                   </property>
                  </widget>
                 </item>
+                <item row="0" column="0">
+                 <widget class="QLabel" name="labelYoloWeights">
+                  <property name="text">
+                   <string>预训练权重</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="6" column="0">
+                 <widget class="QLabel" name="label_2">
+                  <property name="text">
+                   <string>水平翻转概率</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="3" column="1">
+                 <widget class="QSpinBox" name="spinBoxYoloBatch">
+                  <property name="maximum">
+                   <number>1024</number>
+                  </property>
+                  <property name="value">
+                   <number>16</number>
+                  </property>
+                 </widget>
+                </item>
+                <item row="6" column="1">
+                 <widget class="QLineEdit" name="hflipLineEdit">
+                  <property name="text">
+                   <string>0.5</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="7" column="1">
+                 <widget class="QLineEdit" name="vflipLineEdit">
+                  <property name="text">
+                   <string>0</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="7" column="0">
+                 <widget class="QLabel" name="label_3">
+                  <property name="text">
+                   <string>上下翻转概率</string>
+                  </property>
+                 </widget>
+                </item>
                </layout>
               </widget>
              </item>
              <item>
-              <widget class="QCheckBox" name="checkBoxYoloCacheRam">
-               <property name="text">
-                <string>Cache RAM</string>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QCheckBox" name="checkBoxYoloCloseMosaic">
-               <property name="text">
-                <string>Close Mosaic</string>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QPushButton" name="pushButtonRunYoloTrain">
+              <widget class="QPushButton" name="YoloTrainBtn">
                <property name="text">
                 <string>开始 YOLO 训练</string>
                </property>
@@ -801,15 +819,12 @@ p, li { white-space: pre-wrap; }
                 <string>HRNet 参数</string>
                </property>
                <layout class="QGridLayout" name="gridLayout_trainHRNetConfig">
-                <item row="0" column="0">
-                 <widget class="QLabel" name="labelHrnetTrainJson">
+                <item row="5" column="2">
+                 <widget class="QLineEdit" name="lineEditHrnetGpu">
                   <property name="text">
-                   <string>训练 JSON</string>
+                   <string>0,1</string>
                   </property>
                  </widget>
-                </item>
-                <item row="0" column="1">
-                 <widget class="QLineEdit" name="lineEditHrnetTrainJson"/>
                 </item>
                 <item row="1" column="0">
                  <widget class="QLabel" name="labelHrnetValJson">
@@ -818,34 +833,7 @@ p, li { white-space: pre-wrap; }
                   </property>
                  </widget>
                 </item>
-                <item row="1" column="1">
-                 <widget class="QLineEdit" name="lineEditHrnetValJson"/>
-                </item>
-                <item row="2" column="0">
-                 <widget class="QLabel" name="labelHrnetEpochs">
-                  <property name="text">
-                   <string>Epochs</string>
-                  </property>
-                 </widget>
-                </item>
-                <item row="2" column="1">
-                 <widget class="QSpinBox" name="spinBoxHrnetEpochs">
-                  <property name="maximum">
-                   <number>10000</number>
-                  </property>
-                  <property name="value">
-                   <number>200</number>
-                  </property>
-                 </widget>
-                </item>
-                <item row="3" column="0">
-                 <widget class="QLabel" name="labelHrnetBatch">
-                  <property name="text">
-                   <string>Batch</string>
-                  </property>
-                 </widget>
-                </item>
-                <item row="3" column="1">
+                <item row="3" column="2">
                  <widget class="QSpinBox" name="spinBoxHrnetBatch">
                   <property name="maximum">
                    <number>1024</number>
@@ -855,23 +843,24 @@ p, li { white-space: pre-wrap; }
                   </property>
                  </widget>
                 </item>
-                <item row="4" column="0">
-                 <widget class="QLabel" name="labelHrnetLr">
+                <item row="0" column="0">
+                 <widget class="QLabel" name="labelHrnetTrainJson">
                   <property name="text">
-                   <string>LR</string>
+                   <string>训练 JSON</string>
                   </property>
                  </widget>
                 </item>
-                <item row="4" column="1">
-                 <widget class="QDoubleSpinBox" name="doubleSpinBoxHrnetLr">
-                  <property name="decimals">
-                   <number>6</number>
+                <item row="4" column="0">
+                 <widget class="QLabel" name="labelHrnetLr">
+                  <property name="text">
+                   <string>image size</string>
                   </property>
-                  <property name="singleStep">
-                   <double>0.000100000000000</double>
-                  </property>
-                  <property name="value">
-                   <double>0.000500000000000</double>
+                 </widget>
+                </item>
+                <item row="2" column="0">
+                 <widget class="QLabel" name="labelHrnetEpochs">
+                  <property name="text">
+                   <string>Epochs</string>
                   </property>
                  </widget>
                 </item>
@@ -882,10 +871,41 @@ p, li { white-space: pre-wrap; }
                   </property>
                  </widget>
                 </item>
-                <item row="5" column="1">
-                 <widget class="QLineEdit" name="lineEditHrnetGpu">
+                <item row="1" column="2">
+                 <widget class="QLineEdit" name="lineEditHrnetValJson">
                   <property name="text">
-                   <string>0</string>
+                   <string>datasets/val_keypoints.json</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="3" column="0">
+                 <widget class="QLabel" name="labelHrnetBatch">
+                  <property name="text">
+                   <string>Batch</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="0" column="2">
+                 <widget class="QLineEdit" name="lineEditHrnetTrainJson">
+                  <property name="text">
+                   <string>datasets/train_keypoints.json</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="2" column="2">
+                 <widget class="QSpinBox" name="spinBoxHrnetEpochs">
+                  <property name="maximum">
+                   <number>10000</number>
+                  </property>
+                  <property name="value">
+                   <number>200</number>
+                  </property>
+                 </widget>
+                </item>
+                <item row="4" column="2">
+                 <widget class="QLineEdit" name="HRNetImgSizeLineEdit">
+                  <property name="text">
+                   <string>512</string>
                   </property>
                  </widget>
                 </item>
@@ -893,25 +913,7 @@ p, li { white-space: pre-wrap; }
               </widget>
              </item>
              <item>
-              <layout class="QHBoxLayout" name="horizontalLayout_hrnetTrainButtons">
-               <item>
-                <widget class="QPushButton" name="pushButtonBrowseHrnetTrainJson">
-                 <property name="text">
-                  <string>选择 Train JSON</string>
-                 </property>
-                </widget>
-               </item>
-               <item>
-                <widget class="QPushButton" name="pushButtonBrowseHrnetValJson">
-                 <property name="text">
-                  <string>选择 Val JSON</string>
-                 </property>
-                </widget>
-               </item>
-              </layout>
-             </item>
-             <item>
-              <widget class="QPushButton" name="pushButtonRunHrnetTrain">
+              <widget class="QPushButton" name="HRNetTrainBtn">
                <property name="text">
                 <string>开始 HRNet 训练</string>
                </property>
@@ -921,160 +923,183 @@ p, li { white-space: pre-wrap; }
            </widget>
           </widget>
          </item>
-         <item>
-          <widget class="QTextBrowser" name="textBrowserTrainLog"/>
-         </item>
         </layout>
        </widget>
        <widget class="QWidget" name="tabInference">
         <attribute name="title">
          <string>推理与误差分析</string>
         </attribute>
-        <layout class="QHBoxLayout" name="horizontalLayout_inference">
+        <layout class="QVBoxLayout" name="verticalLayout_5">
          <item>
-          <widget class="QGroupBox" name="groupInferenceConfig">
-           <property name="title">
-            <string>推理参数</string>
-           </property>
-           <layout class="QGridLayout" name="gridLayout_inferenceConfig">
-            <item row="0" column="0">
-             <widget class="QLabel" name="labelInferInput">
-              <property name="text">
-               <string>输入路径</string>
-              </property>
-             </widget>
-            </item>
-            <item row="0" column="1">
-             <widget class="QLineEdit" name="lineEditInferInput"/>
-            </item>
-            <item row="0" column="2">
-             <widget class="QPushButton" name="pushButtonBrowseInferInput">
-              <property name="text">
-               <string>浏览</string>
-              </property>
-             </widget>
-            </item>
-            <item row="1" column="0">
-             <widget class="QLabel" name="labelInferModel">
-              <property name="text">
-               <string>模型模式</string>
-              </property>
-             </widget>
-            </item>
-            <item row="1" column="1">
-             <widget class="QComboBox" name="comboBoxInferModel">
-              <item>
-               <property name="text">
-                <string>YOLO</string>
-               </property>
-              </item>
-              <item>
-               <property name="text">
-                <string>YOLO + HRNet</string>
-               </property>
-              </item>
-             </widget>
-            </item>
-            <item row="2" column="0">
-             <widget class="QLabel" name="labelScoreThr">
-              <property name="text">
-               <string>置信度阈值</string>
-              </property>
-             </widget>
-            </item>
-            <item row="2" column="1">
-             <widget class="QDoubleSpinBox" name="doubleSpinBoxScoreThr">
-              <property name="decimals">
-               <number>3</number>
-              </property>
-              <property name="maximum">
-               <double>1.000000000000000</double>
-              </property>
-              <property name="singleStep">
-               <double>0.050000000000000</double>
-              </property>
-              <property name="value">
-               <double>0.500000000000000</double>
-              </property>
-             </widget>
-            </item>
-            <item row="3" column="0">
-             <widget class="QCheckBox" name="checkBoxSaveInferJson">
-              <property name="text">
-               <string>保存 JSON</string>
-              </property>
-              <property name="checked">
-               <bool>true</bool>
-              </property>
-             </widget>
-            </item>
-            <item row="3" column="1">
-             <widget class="QCheckBox" name="checkBoxSaveInferVis">
-              <property name="text">
-               <string>保存可视化图</string>
-              </property>
-              <property name="checked">
-               <bool>true</bool>
-              </property>
-             </widget>
-            </item>
-            <item row="4" column="0">
-             <widget class="QCheckBox" name="checkBoxCalcError">
-              <property name="text">
-               <string>计算误差</string>
-              </property>
-              <property name="checked">
-               <bool>true</bool>
-              </property>
-             </widget>
-            </item>
-            <item row="4" column="1">
-             <widget class="QCheckBox" name="checkBoxSaveHeatmaps">
-              <property name="text">
-               <string>保存 Heatmap</string>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </widget>
+          <layout class="QHBoxLayout" name="horizontalLayout_5">
+           <item>
+            <widget class="QLabel" name="label_4">
+             <property name="text">
+              <string>Yolo 模型</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QComboBox" name="YoloModelCombbox"/>
+           </item>
+          </layout>
          </item>
          <item>
-          <widget class="QSplitter" name="splitterInferenceRight">
-           <property name="orientation">
-            <enum>Qt::Vertical</enum>
+          <layout class="QHBoxLayout" name="horizontalLayout_8">
+           <item>
+            <widget class="QLabel" name="label_5">
+             <property name="text">
+              <string>HRNet 模型</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QComboBox" name="HRNetModelCombbox"/>
+           </item>
+          </layout>
+         </item>
+         <item>
+          <layout class="QHBoxLayout" name="horizontalLayout_10">
+           <item>
+            <widget class="QLabel" name="label_6">
+             <property name="text">
+              <string>批处理文件夹</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLineEdit" name="inferImgForlderLineEdit">
+             <property name="placeholderText">
+              <string>选择用于推理的文件夹</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+         <item>
+          <widget class="QTabWidget" name="tabWidget">
+           <property name="currentIndex">
+            <number>0</number>
            </property>
-           <widget class="QTextBrowser" name="textBrowserInferenceSummary"/>
-           <widget class="QTabWidget" name="tabWidgetInferenceOutputs">
-            <widget class="QWidget" name="tabInferImage">
-             <attribute name="title">
-              <string>图片</string>
-             </attribute>
-             <layout class="QVBoxLayout" name="verticalLayout_inferImage">
-              <item>
-               <widget class="QGraphicsView" name="graphicsViewInferImage"/>
-              </item>
-             </layout>
-            </widget>
-            <widget class="QWidget" name="tabInferJson">
-             <attribute name="title">
-              <string>JSON</string>
-             </attribute>
-             <layout class="QVBoxLayout" name="verticalLayout_inferJson">
-              <item>
-               <widget class="QTextBrowser" name="textBrowserInferJson"/>
-              </item>
-             </layout>
-            </widget>
-            <widget class="QWidget" name="tabInferHist">
-             <attribute name="title">
-              <string>误差图</string>
-             </attribute>
-             <layout class="QVBoxLayout" name="verticalLayout_inferHist">
-              <item>
-               <widget class="QGraphicsView" name="graphicsViewInferHist"/>
-              </item>
-             </layout>
-            </widget>
+           <widget class="QWidget" name="tabBatchInferWidget">
+            <attribute name="title">
+             <string>批量推理</string>
+            </attribute>
+            <layout class="QHBoxLayout" name="horizontalLayout_9">
+             <item>
+              <widget class="QGroupBox" name="groupBox_2">
+               <property name="title">
+                <string>批量推理设置</string>
+               </property>
+               <layout class="QVBoxLayout" name="verticalLayout_6">
+                <item>
+                 <layout class="QHBoxLayout" name="horizontalLayout_11">
+                  <item>
+                   <widget class="QLabel" name="label_7">
+                    <property name="text">
+                     <string>推理输出文件夹</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLineEdit" name="batchInferRetFolderLineEdit">
+                    <property name="text">
+                     <string>batch_infer_result</string>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
+                </item>
+                <item>
+                 <widget class="QCheckBox" name="saveImgCB">
+                  <property name="toolTip">
+                   <string>保存带推理结果的图片到输出文件夹</string>
+                  </property>
+                  <property name="text">
+                   <string>保持图片</string>
+                  </property>
+                  <property name="checked">
+                   <bool>true</bool>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QCheckBox" name="saveJsonCB">
+                  <property name="toolTip">
+                   <string>将推理关键点/框保存为 JSON 文件</string>
+                  </property>
+                  <property name="text">
+                   <string>保存json</string>
+                  </property>
+                  <property name="checked">
+                   <bool>true</bool>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QCheckBox" name="saveErrCB">
+                  <property name="toolTip">
+                   <string>若有真值，将计算并输出误差统计</string>
+                  </property>
+                  <property name="text">
+                   <string>计算误差 </string>
+                  </property>
+                  <property name="checked">
+                   <bool>true</bool>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="batchInferBtn">
+                  <property name="text">
+                   <string>开始批量推理</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+             <item>
+              <widget class="QGroupBox" name="groupBox">
+               <property name="minimumSize">
+                <size>
+                 <width>400</width>
+                 <height>0</height>
+                </size>
+               </property>
+               <property name="title">
+                <string>误差可视化</string>
+               </property>
+               <layout class="QVBoxLayout" name="verticalLayout_errorVis">
+                <item>
+                 <widget class="QLabel" name="labelErrorVisPlaceholder">
+                  <property name="text">
+                   <string>误差可视化将在此处显示</string>
+                  </property>
+                  <property name="alignment">
+                   <set>Qt::AlignCenter</set>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QGraphicsView" name="errorVisView">
+                  <property name="minimumSize">
+                   <size>
+                    <width>360</width>
+                    <height>240</height>
+                   </size>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+           <widget class="QWidget" name="tabSingleInferWidget">
+            <attribute name="title">
+             <string>单图推理可视化</string>
+            </attribute>
            </widget>
           </widget>
          </item>
@@ -1156,56 +1181,6 @@ p, li { white-space: pre-wrap; }
            </property>
            <widget class="QTextBrowser" name="textBrowserExportResult"/>
            <widget class="QListWidget" name="listWidgetExportArtifacts"/>
-          </widget>
-         </item>
-        </layout>
-       </widget>
-       <widget class="QWidget" name="tabLogs">
-        <attribute name="title">
-         <string>日志与产物</string>
-        </attribute>
-        <layout class="QHBoxLayout" name="horizontalLayout_logs">
-         <item>
-          <widget class="QListWidget" name="listWidgetTaskHistory"/>
-         </item>
-         <item>
-          <widget class="QTabWidget" name="tabWidgetLogs">
-           <widget class="QWidget" name="tabLogStream">
-            <attribute name="title">
-             <string>日志流</string>
-            </attribute>
-            <layout class="QVBoxLayout" name="verticalLayout_logStream">
-             <item>
-              <widget class="QTextBrowser" name="textBrowserLogStream"/>
-             </item>
-            </layout>
-           </widget>
-           <widget class="QWidget" name="tabArtifacts">
-            <attribute name="title">
-             <string>Artifacts</string>
-            </attribute>
-            <layout class="QVBoxLayout" name="verticalLayout_artifacts">
-             <item>
-              <widget class="QTreeWidget" name="treeWidgetArtifacts">
-               <column>
-                <property name="text">
-                 <string>名称</string>
-                </property>
-               </column>
-               <column>
-                <property name="text">
-                 <string>路径</string>
-                </property>
-               </column>
-               <column>
-                <property name="text">
-                 <string>类型</string>
-                </property>
-               </column>
-              </widget>
-             </item>
-            </layout>
-           </widget>
           </widget>
          </item>
         </layout>
