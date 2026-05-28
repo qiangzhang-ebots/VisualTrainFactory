@@ -29,7 +29,7 @@ def _get_log_name():
     if log_name:
         return log_name
 
-    log_name = 'train_' + datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+    log_name = 'train_' + datetime.now().strftime('%Y%m%d_%H%M%S')
     os.environ['TRAIN_LOGNAME'] = log_name
     return log_name
 
@@ -38,24 +38,40 @@ def _get_gpu_ids(gpu_spec):
     return [item.strip() for item in str(gpu_spec).split(',') if item.strip()]
 
 
-gpu = '0'
-logName = _get_log_name()
+
+
 is_torchrun_worker = os.environ.get('HRNET_DIST_LAUNCHED') == '1' and os.environ.get('LOCAL_RANK') is not None
 
 
-def trainYolo(workspace, epochs, batch_size, img_size, weights=None):
+def trainYolo(workspace, labelName, epochs, batch_size, 
+              img_size, gpu, logName, workers, hflipRatio, vflipRatio, weights=None):
     import yaml
 
     workspace_path = _resolve_workspace(workspace)
     script_dir = Path(__file__).resolve().parent
-    yaml_path = workspace_path / 'FPC-pose.yaml'
+    yaml_path = workspace_path / 'Pose.yaml'
     if not yaml_path.exists():
-        yaml_path = script_dir / 'FPC-pose.yaml'
-    if not yaml_path.exists():
-        raise FileNotFoundError(f'YAML not found: {yaml_path}')
-
-    with open(yaml_path, 'r', encoding='utf-8') as handle:
-        data = yaml.safe_load(handle) or {}
+        # 自动创建Pose.yaml，内容根据labelName同步names字段
+        data = {
+            'path': str(workspace_path / 'datasets'),
+            'train': 'images/train',
+            'val': 'images/val',
+            'test': None,
+            'kpt_shape': [4, 3],
+            'flip_idx': [1, 0, 3, 2],
+            'names': {int(v): str(k) for k, v in labelName.items()},
+            'kpt_names': {0: ['p1', 'p2', 'p3', 'p4']},
+        }
+        with open(yaml_path, 'w', encoding='utf-8') as handle:
+            yaml.safe_dump(data, handle, sort_keys=False, allow_unicode=True)
+    else:
+        with open(yaml_path, 'r', encoding='utf-8') as handle:
+            data = yaml.safe_load(handle) or {}
+        # names字段自动同步labelName
+        if data.get('names') != {int(k): str(v) for k, v in labelName.items()}:
+            data['names'] = {int(k): str(v) for k, v in labelName.items()}
+            with open(yaml_path, 'w', encoding='utf-8') as handle:
+                yaml.safe_dump(data, handle, sort_keys=False, allow_unicode=True)
 
     dataset_path = workspace_path / 'datasets'
     if data.get('path') != str(dataset_path):
@@ -70,8 +86,9 @@ def trainYolo(workspace, epochs, batch_size, img_size, weights=None):
         imgsz=int(img_size),
         batch=int(batch_size),
         device=gpu,
-        flipud=0.0,
-        workers=8,
+        flipud=vflipRatio, # 上下翻转概率
+        fliplr=hflipRatio, # 左右翻转概率
+        workers=workers,
         name=logName,
         project=str(workspace_path / 'runs' / 'pose'),
         cache='ram',
@@ -79,7 +96,7 @@ def trainYolo(workspace, epochs, batch_size, img_size, weights=None):
     )
 
 
-def trainHRNet(workspace, epochs, batch_size, img_size):
+def trainHRNet(workspace, epochs, batch_size, img_size, gpu, logName):
     workspace_path = _resolve_workspace(workspace)
     script_dir = Path(__file__).resolve().parent
     dataset_root = workspace_path / 'datasets'
@@ -98,6 +115,7 @@ def trainHRNet(workspace, epochs, batch_size, img_size):
     gpu_ids = _get_gpu_ids(gpu)
     use_multi_gpu = len(gpu_ids) > 1
     dist_launched = os.environ.get('HRNET_DIST_LAUNCHED') == '1'
+    requested_batch = int(batch_size)
 
     if use_multi_gpu and not dist_launched and os.environ.get('LOCAL_RANK') is None:
         env = os.environ.copy()
@@ -195,7 +213,11 @@ def trainHRNet(workspace, epochs, batch_size, img_size):
     ]
 
     epoch = int(epochs)
-    batch = int(batch_size)
+    batch = requested_batch
+    if use_multi_gpu:
+        # torchrun + MMEngine treat dataloader batch_size as per-process batch.
+        # Interpret the UI input as the total batch size to avoid silently scaling memory with GPU count.
+        batch = max(1, (requested_batch + len(gpu_ids) - 1) // len(gpu_ids))
     val_batch = 1
     train_workers = 4
     val_workers = 2
@@ -336,6 +358,13 @@ def trainHRNet(workspace, epochs, batch_size, img_size):
     runner_cfg.test_evaluator = None
 
     register_all_modules(init_default_scope=True)
+    if use_multi_gpu:
+        print(
+            f'HRNet multi-GPU launch: devices={gpu_ids}, '
+            f'requested_batch={requested_batch}, per_gpu_batch={batch}'
+        )
+    else:
+        print(f'HRNet single-GPU launch: device={gpu}, batch={batch}')
     runner = Runner.from_cfg(runner_cfg)
     runner.train()
 
@@ -347,4 +376,18 @@ def trainHRNet(workspace, epochs, batch_size, img_size):
 
 
 if __name__ == '__main__':
+
+    workspace = "/home/ebots/Desktop/zhq/VisualFactoryTest/"
+    
     multiprocessing.freeze_support()
+
+    
+    # if not is_torchrun_worker:
+    #     '''
+    #     trainHRNet中，如果是两块gpu，会开启torch的并行。这个时候，会再跑一次trainYolo
+    #     为了让trainYolo，只跑一次。这里加了一个判断
+    #     '''
+    #     trainYolo(workspace, labelName = {0: '0', 1: '1'}, epochs=100, batch_size=16, img_size=640, gpu='0,1', logName=_get_log_name(), weights=None)
+
+
+    trainHRNet(workspace, epochs=100, batch_size=16, img_size=640, gpu='0,1', logName=_get_log_name())

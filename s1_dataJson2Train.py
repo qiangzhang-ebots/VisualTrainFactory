@@ -362,12 +362,12 @@ def process_filesYolo(convert_info: ConvertInfo):
 				data = json.load(file)
 
 			image_file, image_suffix = _find_image_file(json_root, json_name, data)
-			dst_name = _flatten_rel_path(rel_json.with_suffix('')) + image_suffix
+			dst_name = rel_json.stem+image_suffix
 			dst_img = datasets_dir / 'images' / split_name / dst_name
 			shutil.copy(image_file, dst_img)
 
 			img_w, img_h = _get_image_size(image_file)
-			dst_txt = datasets_dir / 'labels' / split_name / f'{_flatten_rel_path(rel_json.with_suffix(""))}.txt'
+			dst_txt = datasets_dir / 'labels' / split_name / f'{rel_json.stem}.txt'
 			labelme2yolo(json_file, dst_txt, img_w, img_h, convert_info)
 
 	return train_files, val_files, test_files
@@ -482,6 +482,7 @@ def process_filesHRNet(convert_info: ConvertInfo):
 
 
 if __name__ == '__main__':
+	workspace = "/home/ebots/Desktop/zhq/VisualFactoryTest/"
 	convert_info = ConvertInfo()
 	convert_info.Label2Int = {
 		'1': 1,
@@ -489,8 +490,8 @@ if __name__ == '__main__':
 	}
 	convert_info.OccupiedLabel = ['v0', 'v1']
 	# convert_info.Append = True
-	convert_info.JsonPath = 'C://Users//eBots//Desktop//XiaomiProject//group_data'
-	convert_info.DatasetsDir = 'C://Users//eBots//Desktop//XiaomiProject//datasets'
+	convert_info.JsonPath = workspace + 'group_data'
+	convert_info.DatasetsDir = workspace + 'datasets'
 
 	try:
 		process_filesYolo(convert_info)
