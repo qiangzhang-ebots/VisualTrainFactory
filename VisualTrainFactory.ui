@@ -279,6 +279,12 @@ QStatusBar {
     </item>
     <item>
      <widget class="QSplitter" name="qsplitter">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
       <property name="orientation">
        <enum>Qt::Horizontal</enum>
       </property>
@@ -303,8 +309,14 @@ QStatusBar {
        </layout>
       </widget>
       <widget class="QTabWidget" name="tabWidgetMain">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+         <horstretch>0</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
        <property name="currentIndex">
-        <number>5</number>
+        <number>4</number>
        </property>
        <widget class="QWidget" name="tabDataPrepare">
         <attribute name="title">
@@ -413,7 +425,7 @@ p, li { white-space: pre-wrap; }
                 <item>
                  <widget class="QTabWidget" name="tabWidgetPreviewConfig">
                   <property name="currentIndex">
-                   <number>0</number>
+                   <number>1</number>
                   </property>
                   <widget class="QWidget" name="tabPreviewSplitMode">
                    <attribute name="title">
@@ -655,7 +667,25 @@ p, li { white-space: pre-wrap; }
         <attribute name="title">
          <string>训练</string>
         </attribute>
-        <layout class="QHBoxLayout" name="horizontalLayout_train">
+        <layout class="QVBoxLayout" name="verticalLayout_4">
+         <item>
+          <layout class="QHBoxLayout" name="horizontalLayout_7">
+           <item>
+            <widget class="QPushButton" name="trainYoloHRNetBtn">
+             <property name="text">
+              <string>一键训练 Yolo+HRNet</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="exportOnnxBtn">
+             <property name="text">
+              <string>一键导出onnx</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
          <item>
           <widget class="QTabWidget" name="tabWidgetTrainTypes">
            <property name="currentIndex">
@@ -985,113 +1015,125 @@ p, li { white-space: pre-wrap; }
             <attribute name="title">
              <string>批量推理</string>
             </attribute>
-            <layout class="QHBoxLayout" name="horizontalLayout_9">
+            <layout class="QVBoxLayout" name="verticalLayout_batchInferTab">
+             <property name="spacing">
+              <number>0</number>
+             </property>
+             <property name="leftMargin">
+              <number>0</number>
+             </property>
+             <property name="topMargin">
+              <number>0</number>
+             </property>
+             <property name="rightMargin">
+              <number>0</number>
+             </property>
+             <property name="bottomMargin">
+              <number>0</number>
+             </property>
              <item>
-              <widget class="QGroupBox" name="groupBox_2">
-               <property name="title">
-                <string>批量推理设置</string>
+              <widget class="QSplitter" name="batchInferSplitter">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                 <horstretch>0</horstretch>
+                 <verstretch>0</verstretch>
+                </sizepolicy>
                </property>
-               <layout class="QVBoxLayout" name="verticalLayout_6">
-                <item>
-                 <layout class="QHBoxLayout" name="horizontalLayout_11">
-                  <item>
-                   <widget class="QLabel" name="label_7">
-                    <property name="text">
-                     <string>推理输出文件夹</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item>
-                   <widget class="QLineEdit" name="batchInferRetFolderLineEdit">
-                    <property name="text">
-                     <string>batch_infer_result</string>
-                    </property>
-                   </widget>
-                  </item>
-                 </layout>
-                </item>
-                <item>
-                 <widget class="QCheckBox" name="saveImgCB">
-                  <property name="toolTip">
-                   <string>保存带推理结果的图片到输出文件夹</string>
-                  </property>
-                  <property name="text">
-                   <string>保持图片</string>
-                  </property>
-                  <property name="checked">
-                   <bool>true</bool>
-                  </property>
-                 </widget>
-                </item>
-                <item>
-                 <widget class="QCheckBox" name="saveJsonCB">
-                  <property name="toolTip">
-                   <string>将推理关键点/框保存为 JSON 文件</string>
-                  </property>
-                  <property name="text">
-                   <string>保存json</string>
-                  </property>
-                  <property name="checked">
-                   <bool>true</bool>
-                  </property>
-                 </widget>
-                </item>
-                <item>
-                 <widget class="QCheckBox" name="saveErrCB">
-                  <property name="toolTip">
-                   <string>若有真值，将计算并输出误差统计</string>
-                  </property>
-                  <property name="text">
-                   <string>计算误差 </string>
-                  </property>
-                  <property name="checked">
-                   <bool>true</bool>
-                  </property>
-                 </widget>
-                </item>
-                <item>
-                 <widget class="QPushButton" name="batchInferBtn">
-                  <property name="text">
-                   <string>开始批量推理</string>
-                  </property>
-                 </widget>
-                </item>
-               </layout>
-              </widget>
-             </item>
-             <item>
-              <widget class="QGroupBox" name="groupBox">
-               <property name="minimumSize">
-                <size>
-                 <width>400</width>
-                 <height>0</height>
-                </size>
+               <property name="orientation">
+                <enum>Qt::Horizontal</enum>
                </property>
-               <property name="title">
-                <string>误差可视化</string>
+               <property name="childrenCollapsible">
+                <bool>false</bool>
                </property>
-               <layout class="QVBoxLayout" name="verticalLayout_errorVis">
-                <item>
-                 <widget class="QLabel" name="labelErrorVisPlaceholder">
-                  <property name="text">
-                   <string>误差可视化将在此处显示</string>
-                  </property>
-                  <property name="alignment">
-                   <set>Qt::AlignCenter</set>
-                  </property>
-                 </widget>
-                </item>
-                <item>
-                 <widget class="QGraphicsView" name="errorVisView">
-                  <property name="minimumSize">
-                   <size>
-                    <width>360</width>
-                    <height>240</height>
-                   </size>
-                  </property>
-                 </widget>
-                </item>
-               </layout>
+               <widget class="QGroupBox" name="batchInferSettingGroupBox">
+                <property name="minimumSize">
+                 <size>
+                  <width>280</width>
+                  <height>0</height>
+                 </size>
+                </property>
+                <property name="title">
+                 <string>批量推理设置</string>
+                </property>
+                <layout class="QVBoxLayout" name="verticalLayout_6">
+                 <item>
+                  <layout class="QHBoxLayout" name="horizontalLayout_11">
+                   <item>
+                    <widget class="QLabel" name="label_7">
+                     <property name="text">
+                      <string>推理输出文件夹</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item>
+                    <widget class="QLineEdit" name="batchInferRetFolderLineEdit">
+                     <property name="text">
+                      <string>batch_infer_result</string>
+                     </property>
+                    </widget>
+                   </item>
+                  </layout>
+                 </item>
+                 <item>
+                  <widget class="QCheckBox" name="saveImgCB">
+                   <property name="toolTip">
+                    <string>保存带推理结果的图片到输出文件夹</string>
+                   </property>
+                   <property name="text">
+                    <string>保持图片</string>
+                   </property>
+                   <property name="checked">
+                    <bool>true</bool>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QCheckBox" name="saveJsonCB">
+                   <property name="toolTip">
+                    <string>将推理关键点/框保存为 JSON 文件</string>
+                   </property>
+                   <property name="text">
+                    <string>保存json</string>
+                   </property>
+                   <property name="checked">
+                    <bool>true</bool>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QCheckBox" name="saveErrCB">
+                   <property name="toolTip">
+                    <string>若有真值，将计算并输出误差统计</string>
+                   </property>
+                   <property name="text">
+                    <string>计算误差 </string>
+                   </property>
+                   <property name="checked">
+                    <bool>true</bool>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QPushButton" name="batchInferBtn">
+                   <property name="text">
+                    <string>开始批量推理</string>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </widget>
+               <widget class="QGroupBox" name="visualErrGroupBox">
+                <property name="minimumSize">
+                 <size>
+                  <width>400</width>
+                  <height>0</height>
+                 </size>
+                </property>
+                <property name="title">
+                 <string>误差可视化</string>
+                </property>
+                <layout class="QVBoxLayout" name="verticalLayout_errorVis"/>
+               </widget>
               </widget>
              </item>
             </layout>
@@ -1101,86 +1143,6 @@ p, li { white-space: pre-wrap; }
              <string>单图推理可视化</string>
             </attribute>
            </widget>
-          </widget>
-         </item>
-        </layout>
-       </widget>
-       <widget class="QWidget" name="tabExport">
-        <attribute name="title">
-         <string>导出 ONNX</string>
-        </attribute>
-        <layout class="QHBoxLayout" name="horizontalLayout_export">
-         <item>
-          <widget class="QGroupBox" name="groupExportConfig">
-           <property name="title">
-            <string>导出参数</string>
-           </property>
-           <layout class="QGridLayout" name="gridLayout_exportConfig">
-            <item row="0" column="0">
-             <widget class="QLabel" name="labelExportType">
-              <property name="text">
-               <string>导出类型</string>
-              </property>
-             </widget>
-            </item>
-            <item row="0" column="1">
-             <widget class="QComboBox" name="comboBoxExportType">
-              <item>
-               <property name="text">
-                <string>YOLO</string>
-               </property>
-              </item>
-              <item>
-               <property name="text">
-                <string>HRNet</string>
-               </property>
-              </item>
-             </widget>
-            </item>
-            <item row="1" column="0">
-             <widget class="QLabel" name="labelExportCheckpoint">
-              <property name="text">
-               <string>Checkpoint</string>
-              </property>
-             </widget>
-            </item>
-            <item row="1" column="1">
-             <widget class="QLineEdit" name="lineEditExportCheckpoint"/>
-            </item>
-            <item row="1" column="2">
-             <widget class="QPushButton" name="pushButtonBrowseExportCheckpoint">
-              <property name="text">
-               <string>浏览</string>
-              </property>
-             </widget>
-            </item>
-            <item row="2" column="0">
-             <widget class="QLabel" name="labelExportImage">
-              <property name="text">
-               <string>示例图</string>
-              </property>
-             </widget>
-            </item>
-            <item row="2" column="1">
-             <widget class="QLineEdit" name="lineEditExportImage"/>
-            </item>
-            <item row="2" column="2">
-             <widget class="QPushButton" name="pushButtonBrowseExportImage">
-              <property name="text">
-               <string>浏览</string>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </widget>
-         </item>
-         <item>
-          <widget class="QSplitter" name="splitterExportRight">
-           <property name="orientation">
-            <enum>Qt::Vertical</enum>
-           </property>
-           <widget class="QTextBrowser" name="textBrowserExportResult"/>
-           <widget class="QListWidget" name="listWidgetExportArtifacts"/>
           </widget>
          </item>
         </layout>
