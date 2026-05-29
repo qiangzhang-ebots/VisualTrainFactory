@@ -1056,6 +1056,35 @@ class VisualTrainFactoryWindow(QMainWindow):
         self._visual_train_current_index = index % len(self._visual_train_image_pairs)
         self._show_visual_train_current_image()
 
+    def _show_error_histogram(self, image_path):
+        """在主线程中把误差直方图挂到误差可视化区域。"""
+        try:
+            if hasattr(self, 'labelErrorVisPlaceholder') and self.labelErrorVisPlaceholder is not None:
+                self.labelErrorVisPlaceholder.setVisible(False)
+        except Exception:
+            pass
+
+        try:
+            if hasattr(self, 'errorVisView') and self.errorVisView is not None:
+                self.errorVisView.setVisible(False)
+        except Exception:
+            pass
+
+        if not hasattr(self, '_error_image_view') or self._error_image_view is None:
+            parent_widget = self.visualErrGroupBox if hasattr(self, 'visualErrGroupBox') else None
+            self._error_image_view = ImageView(parent_widget)
+            self._error_image_view.setObjectName('errorImageView')
+
+            if hasattr(self, 'verticalLayout_errorVis') and self.verticalLayout_errorVis is not None:
+                self.verticalLayout_errorVis.addWidget(self._error_image_view)
+            elif parent_widget is not None:
+                layout = parent_widget.layout()
+                if layout is not None:
+                    layout.addWidget(self._error_image_view)
+
+        self._error_image_view.setVisible(True)
+        self._error_image_view.SetImage(str(image_path))
+
     def visual_train_last_image_slot(self):
         self._refresh_visual_train_image_list()
         if not self._visual_train_image_pairs:
@@ -1431,7 +1460,7 @@ class VisualTrainFactoryWindow(QMainWindow):
        
         import traceback
         try:
-            from s4_inference import InferenceModel, draw_results, save_result
+            from s4_inference import InferenceModel, draw_results, save_result, statistics_result
         except Exception as e:
             self._append_log_message(f'无法导入 s4_inference: {e}')
             return
@@ -1494,6 +1523,7 @@ class VisualTrainFactoryWindow(QMainWindow):
         out_vis_dir.mkdir(parents=True, exist_ok=True)
 
         model = InferenceModel()
+        result_holder = {'combined_png': None}
 
         def _run_batch():
             try:
@@ -1514,9 +1544,10 @@ class VisualTrainFactoryWindow(QMainWindow):
 
                 self._append_log_message(f'开始对 {total} 张图片进行推理...')
 
-                # 根据 UI 复选框决定是否保存 JSON 和/或可视化图片
+                # 根据 UI 复选框决定是否保存 JSON、可视化图片或统计误差
                 save_json_enabled = False
                 save_img_enabled = False
+                save_err_enabled = False
                 try:
                     if hasattr(self, 'saveJsonCB') and self.saveJsonCB is not None:
                         save_json_enabled = bool(self.saveJsonCB.isChecked())
@@ -1529,9 +1560,45 @@ class VisualTrainFactoryWindow(QMainWindow):
                 except Exception:
                     save_img_enabled = False
 
+                try:
+                    if hasattr(self, 'saveErrCB') and self.saveErrCB is not None:
+                        save_err_enabled = bool(self.saveErrCB.isChecked())
+                except Exception:
+                    save_err_enabled = False
+
+                # collect ground-truth items and prediction results for later error statistics
+                gt_files = []
+                pred_ret = []
+
                 for idx, img_path in enumerate(images, start=1):
                     try:
                         ret = model.predict(str(img_path))
+                        # collect prediction
+                        pred_ret.append(ret)
+                        # try to locate ground-truth file for this image
+                        gt_item = None
+                        try:
+                            # find corresponding gt .txt under datasets by image stem
+                            dataset_dir = Path(work_dir) / 'datasets'
+                            stem = img_path.stem
+                            txt_path = None
+                            if dataset_dir.exists():
+                                p1 = dataset_dir / 'labels' / 'train' / f'{stem}.txt'
+                                p2 = dataset_dir / 'labels' / 'val' / f'{stem}.txt'
+                                p3 = dataset_dir / 'labels' / 'test' / f'{stem}.txt'
+                                if p1.exists():
+                                    txt_path = p1
+                                elif p2.exists():
+                                    txt_path = p2
+                                elif p3.exists():
+                                    txt_path = p3
+                                else:
+                                    txt_path = None
+
+                            gt_item = txt_path
+                        except Exception:
+                            gt_item = None
+                        gt_files.append(gt_item)
                         json_path = out_json_dir / (img_path.stem + '.json')
 
                         if save_json_enabled:
@@ -1557,12 +1624,44 @@ class VisualTrainFactoryWindow(QMainWindow):
                     except Exception as exc:
                         self._append_log_message(f'处理文件 {img_path} 失败: {exc}')
 
+                # 如果用户勾选了统计误差，调用 s4_inference.statistics_result
+                if save_err_enabled:
+                    try:
+                        self._append_log_message('开始统计误差...')
+                        # stats runs may be expensive; run synchronously here but catch errors
+                        # use the previously constructed base_ret_dir for result paths
+                        statistics_result(gt_files, pred_ret, class_names, str(base_ret_dir))
+                        self._append_log_message('误差统计完成。')
+                        hist_dir = Path(base_ret_dir) / 'error_hist'
+                        combined_png = hist_dir / 'combined.png'
+                        if not combined_png.exists() and hist_dir.exists():
+                            pngs = sorted(hist_dir.glob('*.png'))
+                            combined_png = pngs[0] if pngs else combined_png
+
+                        if combined_png.exists():
+                            result_holder['combined_png'] = combined_png
+                    except Exception as exc:
+                        self._append_log_message(f'误差统计失败: {exc}')
+
                 self._append_log_message(f'批量推理完成，结果保存在: {out_json_dir} 与 {out_vis_dir}')
             except Exception as exc:
                 self._append_log_message(f'批量推理失败: {exc}\n{traceback.format_exc()}')
 
         worker = threading.Thread(target=_run_batch, daemon=True)
         worker.start()
+
+        while worker.is_alive():
+            QApplication.processEvents()
+            time.sleep(0.2)
+
+        worker.join()
+
+        combined_png = result_holder.get('combined_png')
+        if combined_png is not None:
+            try:
+                self._show_error_histogram(combined_png)
+            except Exception as exc:
+                self._append_log_message(f'显示直方图失败: {exc}')
 
 
 def main():
