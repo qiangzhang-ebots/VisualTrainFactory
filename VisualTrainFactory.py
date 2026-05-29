@@ -16,26 +16,26 @@ from s2_visualTrainData import visual_Yolo_trainData
 
 def _import_qt_widgets():
     try:
-        from PySide6.QtWidgets import QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView
+        from PySide6.QtWidgets import QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox
         from PySide6.QtCore import QModelIndex, QEvent, QObject, Qt
 
-        return QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QModelIndex, QEvent, QObject, Qt, "pyside6"
+        return QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox, QModelIndex, QEvent, QObject, Qt, "pyside6"
     except ImportError:
         pass
 
     try:
-        from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView
+        from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox
         from PyQt5.QtCore import QModelIndex, QEvent, QObject, Qt
 
-        return QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QModelIndex, QEvent, QObject, Qt, "pyqt5"
+        return QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox, QModelIndex, QEvent, QObject, Qt, "pyqt5"
     except ImportError:
         pass
 
     try:
-        from PySide2.QtWidgets import QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView
+        from PySide2.QtWidgets import QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox
         from PySide2.QtCore import QModelIndex, QEvent, QObject, Qt
 
-        return QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QModelIndex, QEvent, QObject, Qt, "pyside2"
+        return QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox, QModelIndex, QEvent, QObject, Qt, "pyside2"
     except ImportError as exc:
         raise ImportError("Need PySide6, PyQt5, or PySide2 installed") from exc
 
@@ -73,12 +73,14 @@ def _load_ui_into(window, ui_path: Path, backend: str):
     window.setWindowTitle(loaded.windowTitle())
 
 
-QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QModelIndex, QEvent, QObject, Qt, QT_BACKEND = _import_qt_widgets()
+QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox, QModelIndex, QEvent, QObject, Qt, QT_BACKEND = _import_qt_widgets()
 
 
 RECENT_WORK_DIRECTORY_KEY = "recentWorkDirectories"
 MAX_RECENT_WORK_DIRECTORIES = 10
 CONFIG_FILE = Path(__file__).with_name("VisualFactoryConfig.json")
+WORK_DIRECTORY_CONFIG_NAME = "VisualFactoryConfig.json"
+CONFIG_VERSION = 1
 COMBO_ARROW_ICON = Path(__file__).with_name("combo-arrow-down.svg")
 COMBO_ARROW_LIGHT_ICON = Path(__file__).with_name("combo-arrow-down-light.svg")
 IMAGE_SUFFIXES = {'.jpg', '.jpeg', '.png', '.tif', '.tiff', '.bmp'}
@@ -92,6 +94,8 @@ class VisualTrainFactoryWindow(QMainWindow):
         _load_ui_into(self, ui_path, QT_BACKEND)
         self._folder_tree_model = QFileSystemModel(self)
         self._recent_work_directories = self._load_recent_work_directories()
+        self._saved_label_mapping_rows = []
+        self._saved_widget_state = {}
         self._label_id_edits = {}
         self._label_usage_combos = {}
         self._visual_train_image_pairs = []
@@ -108,13 +112,21 @@ class VisualTrainFactoryWindow(QMainWindow):
         app = QApplication.instance()
         if app is not None:
             app.installEventFilter(self)
-        self._refresh_preview_label_scan_result([])
+        if not self._restore_persisted_state():
+            self._refresh_preview_label_scan_result([])
 
     def keyPressEvent(self, event):
         """在训练数据可视化页支持 A/D 快捷键翻页。"""
         if self._handle_visual_train_key_press(event.key(), event.modifiers(), event.isAutoRepeat()):
             return
         super().keyPressEvent(event)
+
+    def closeEvent(self, event):
+        """关闭窗口时把当前工作目录下的界面配置写回磁盘。"""
+        try:
+            self._save_current_work_directory_state()
+        finally:
+            super().closeEvent(event)
 
     def eventFilter(self, watched, event):
         """拦截全局按键事件，让训练可视化页不依赖焦点也能接收 A/D。"""
@@ -264,6 +276,267 @@ class VisualTrainFactoryWindow(QMainWindow):
                 json.dump(payload, file, ensure_ascii=False, indent=2)
         except OSError:
             pass
+
+    def _get_work_directory_config_path(self, work_directory=None):
+        if work_directory is None:
+            work_directory = self._get_work_directory_path()
+
+        if work_directory is None:
+            return None
+
+        return Path(work_directory).expanduser() / WORK_DIRECTORY_CONFIG_NAME
+
+    def _read_json_payload(self, file_path: Path):
+        try:
+            with file_path.open('r', encoding='utf-8') as file:
+                payload = json.load(file)
+        except (OSError, json.JSONDecodeError):
+            return None
+
+        if isinstance(payload, dict):
+            return payload
+
+        return None
+
+    def _write_json_payload(self, file_path: Path, payload: dict):
+        try:
+            with file_path.open('w', encoding='utf-8') as file:
+                json.dump(payload, file, ensure_ascii=False, indent=2)
+        except OSError:
+            pass
+
+    def _collect_widget_state(self):
+        widget_state = {}
+        for widget in self.findChildren(QWidget):
+            widget_name = widget.objectName()
+            if not widget_name or widget_name.startswith('qt_'):
+                continue
+
+            try:
+                if isinstance(widget, QLineEdit):
+                    widget_state[widget_name] = {
+                        'kind': 'QLineEdit',
+                        'text': widget.text(),
+                    }
+                elif isinstance(widget, QComboBox):
+                    try:
+                        current_data = widget.currentData()
+                    except Exception:
+                        current_data = None
+
+                    if not isinstance(current_data, (str, int, float, bool)) and current_data is not None:
+                        current_data = str(current_data)
+
+                    widget_state[widget_name] = {
+                        'kind': 'QComboBox',
+                        'text': widget.currentText(),
+                        'data': current_data,
+                        'index': widget.currentIndex(),
+                    }
+                elif isinstance(widget, QSpinBox):
+                    widget_state[widget_name] = {
+                        'kind': 'QSpinBox',
+                        'value': int(widget.value()),
+                    }
+                elif isinstance(widget, QDoubleSpinBox):
+                    widget_state[widget_name] = {
+                        'kind': 'QDoubleSpinBox',
+                        'value': float(widget.value()),
+                    }
+                elif isinstance(widget, QCheckBox):
+                    widget_state[widget_name] = {
+                        'kind': 'QCheckBox',
+                        'checked': bool(widget.isChecked()),
+                    }
+            except Exception:
+                continue
+
+        tab_widget = getattr(self, 'tabWidgetMain', None)
+        if tab_widget is not None:
+            try:
+                widget_state['__tabWidgetMain__'] = int(tab_widget.currentIndex())
+            except Exception:
+                pass
+
+        return widget_state
+
+    def _restore_combo_box_state(self, combo_box, state):
+        if combo_box is None or not isinstance(state, dict):
+            return
+
+        preferred_data = state.get('data')
+        preferred_text = state.get('text', '')
+        preferred_index = state.get('index')
+
+        try:
+            if preferred_data not in (None, ''):
+                found_index = combo_box.findData(preferred_data)
+                if found_index >= 0:
+                    combo_box.setCurrentIndex(found_index)
+                    return
+        except Exception:
+            pass
+
+        try:
+            if preferred_text:
+                found_index = combo_box.findText(str(preferred_text))
+                if found_index >= 0:
+                    combo_box.setCurrentIndex(found_index)
+                    return
+                if combo_box.isEditable():
+                    combo_box.setEditText(str(preferred_text))
+                    return
+        except Exception:
+            pass
+
+        try:
+            if preferred_index is not None:
+                combo_box.setCurrentIndex(int(preferred_index))
+        except Exception:
+            pass
+
+    def _restore_widget_state(self, widget_state):
+        if not isinstance(widget_state, dict):
+            return
+
+        for widget in self.findChildren(QWidget):
+            widget_name = widget.objectName()
+            if not widget_name or widget_name.startswith('qt_'):
+                continue
+
+            state = widget_state.get(widget_name)
+            if not isinstance(state, dict):
+                continue
+
+            try:
+                if isinstance(widget, QLineEdit):
+                    widget.blockSignals(True)
+                    widget.setText(str(state.get('text', '')))
+                    widget.blockSignals(False)
+                elif isinstance(widget, QComboBox):
+                    widget.blockSignals(True)
+                    self._restore_combo_box_state(widget, state)
+                    widget.blockSignals(False)
+                elif isinstance(widget, QSpinBox):
+                    widget.blockSignals(True)
+                    widget.setValue(int(state.get('value', widget.value())))
+                    widget.blockSignals(False)
+                elif isinstance(widget, QDoubleSpinBox):
+                    widget.blockSignals(True)
+                    widget.setValue(float(state.get('value', widget.value())))
+                    widget.blockSignals(False)
+                elif isinstance(widget, QCheckBox):
+                    widget.blockSignals(True)
+                    widget.setChecked(bool(state.get('checked', False)))
+                    widget.blockSignals(False)
+            except Exception:
+                continue
+
+        tab_widget = getattr(self, 'tabWidgetMain', None)
+        if tab_widget is not None:
+            try:
+                tab_widget.setCurrentIndex(int(widget_state.get('__tabWidgetMain__', tab_widget.currentIndex())))
+            except Exception:
+                pass
+
+    def _collect_label_mapping_rows(self):
+        rows = []
+        for row_index, (label_text, line_edit) in enumerate(self._label_id_edits.items()):
+            usage_combo = self._label_usage_combos.get(label_text)
+            type_item = None
+            if hasattr(self, 'labelTable') and self.labelTable is not None:
+                type_item = self.labelTable.item(row_index, 1)
+
+            rows.append({
+                'label': label_text,
+                'train_id': '' if line_edit is None else line_edit.text().strip(),
+                'usage': '' if usage_combo is None else usage_combo.currentText().strip(),
+                'type_text': '' if type_item is None else type_item.text().strip(),
+            })
+
+        return rows
+
+    def _restore_label_mapping_rows(self, rows):
+        if not isinstance(rows, list):
+            rows = []
+
+        self._saved_label_mapping_rows = [row for row in rows if isinstance(row, dict) and str(row.get('label', '')).strip()]
+        label_names = [str(row['label']).strip() for row in self._saved_label_mapping_rows]
+
+        if not label_names:
+            return
+
+        self._refresh_preview_label_scan_result(label_names, label_stats={})
+
+    def _build_persisted_payload(self):
+        return {
+            'version': CONFIG_VERSION,
+            'widgetState': self._collect_widget_state(),
+            'labelMappingRows': self._collect_label_mapping_rows(),
+        }
+
+    def _save_current_work_directory_state(self):
+        work_directory_path = self._get_work_directory_path()
+        if work_directory_path is None:
+            self._save_recent_work_directories()
+            return
+
+        normalized_directory = str(work_directory_path.expanduser())
+        if normalized_directory in self._recent_work_directories:
+            self._recent_work_directories.remove(normalized_directory)
+        self._recent_work_directories.insert(0, normalized_directory)
+        self._recent_work_directories = self._recent_work_directories[:MAX_RECENT_WORK_DIRECTORIES]
+        self._save_recent_work_directories()
+
+        config_path = self._get_work_directory_config_path(work_directory_path)
+        if config_path is None:
+            return
+
+        payload = self._build_persisted_payload()
+        payload['workDirectory'] = normalized_directory
+        self._write_json_payload(config_path, payload)
+
+    def _restore_persisted_state(self):
+        if not self._recent_work_directories:
+            return False
+
+        work_directory = None
+        for candidate in self._recent_work_directories:
+            candidate_path = Path(candidate).expanduser()
+            if candidate_path.is_dir():
+                work_directory = str(candidate_path)
+                break
+
+        if work_directory is None:
+            work_directory = str(Path(self._recent_work_directories[0]).expanduser())
+
+        if hasattr(self, 'workDirectoryLineEdit') and self.workDirectoryLineEdit is not None:
+            self.workDirectoryLineEdit.blockSignals(True)
+            if self.workDirectoryLineEdit.findText(work_directory) < 0:
+                self.workDirectoryLineEdit.addItem(work_directory)
+            self.workDirectoryLineEdit.setCurrentText(work_directory)
+            self.workDirectoryLineEdit.blockSignals(False)
+
+        self._update_folder_tree_view(work_directory)
+        self._refresh_inference_model_lists()
+
+        config_path = self._get_work_directory_config_path(work_directory)
+        if config_path is None or not config_path.exists():
+            return False
+
+        payload = self._read_json_payload(config_path)
+        if payload is None:
+            return False
+
+        widget_state = payload.get('widgetState', {})
+        if not isinstance(widget_state, dict):
+            widget_state = {}
+        self._saved_widget_state = widget_state
+
+        label_rows = payload.get('labelMappingRows', [])
+        self._restore_label_mapping_rows(label_rows)
+        self._restore_widget_state(self._saved_widget_state)
+        return True
 
     def _set_work_directory(self, directory: str):
         """切换当前工作目录，并刷新历史记录和文件树。"""
@@ -614,10 +887,29 @@ class VisualTrainFactoryWindow(QMainWindow):
             if line_edit is not None:
                 previous_values[label_text] = line_edit.text().strip()
 
+        for row in self._saved_label_mapping_rows:
+            label_text = str(row.get('label', '')).strip()
+            if not label_text:
+                continue
+            previous_values.setdefault(label_text, str(row.get('train_id', '')).strip())
+
         previous_usages = {}
         for label_text, combo_box in self._label_usage_combos.items():
             if combo_box is not None:
                 previous_usages[label_text] = combo_box.currentText()
+
+        for row in self._saved_label_mapping_rows:
+            label_text = str(row.get('label', '')).strip()
+            if not label_text:
+                continue
+            previous_usages.setdefault(label_text, str(row.get('usage', '')).strip())
+
+        previous_type_texts = {}
+        for row in self._saved_label_mapping_rows:
+            label_text = str(row.get('label', '')).strip()
+            if not label_text:
+                continue
+            previous_type_texts.setdefault(label_text, str(row.get('type_text', '')).strip())
 
         self._label_id_edits = {}
         self._label_usage_combos = {}
@@ -635,6 +927,8 @@ class VisualTrainFactoryWindow(QMainWindow):
 
         for row_index, label_text in enumerate(labels):
             type_text = self._format_label_type_text(label_stats.get(label_text, {}))
+            if not type_text:
+                type_text = previous_type_texts.get(label_text, '')
 
             label_item = QTableWidgetItem(label_text)
             type_item = QTableWidgetItem(type_text)
