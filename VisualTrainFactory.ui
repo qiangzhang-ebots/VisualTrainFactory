@@ -316,7 +316,7 @@ QStatusBar {
         </sizepolicy>
        </property>
        <property name="currentIndex">
-        <number>4</number>
+        <number>5</number>
        </property>
        <widget class="QWidget" name="tabDataPrepare">
         <attribute name="title">
@@ -669,24 +669,6 @@ p, li { white-space: pre-wrap; }
         </attribute>
         <layout class="QVBoxLayout" name="verticalLayout_4">
          <item>
-          <layout class="QHBoxLayout" name="horizontalLayout_7">
-           <item>
-            <widget class="QPushButton" name="trainYoloHRNetBtn">
-             <property name="text">
-              <string>一键训练 Yolo+HRNet</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QPushButton" name="exportOnnxBtn">
-             <property name="text">
-              <string>一键导出onnx</string>
-             </property>
-            </widget>
-           </item>
-          </layout>
-         </item>
-         <item>
           <widget class="QTabWidget" name="tabWidgetTrainTypes">
            <property name="currentIndex">
             <number>0</number>
@@ -972,6 +954,13 @@ p, li { white-space: pre-wrap; }
            <item>
             <widget class="QComboBox" name="YoloModelCombbox"/>
            </item>
+           <item>
+            <widget class="QPushButton" name="exportYoloOnnxBtn">
+             <property name="text">
+              <string>导出onnx模型</string>
+             </property>
+            </widget>
+           </item>
           </layout>
          </item>
          <item>
@@ -985,6 +974,13 @@ p, li { white-space: pre-wrap; }
            </item>
            <item>
             <widget class="QComboBox" name="HRNetModelCombbox"/>
+           </item>
+           <item>
+            <widget class="QPushButton" name="exportHRNetOnnxBtn">
+             <property name="text">
+              <string>导出onnx模型</string>
+             </property>
+            </widget>
            </item>
           </layout>
          </item>
@@ -1088,19 +1084,6 @@ p, li { white-space: pre-wrap; }
                   </widget>
                  </item>
                  <item>
-                  <widget class="QCheckBox" name="saveJsonCB">
-                   <property name="toolTip">
-                    <string>将推理关键点/框保存为 JSON 文件</string>
-                   </property>
-                   <property name="text">
-                    <string>保存json</string>
-                   </property>
-                   <property name="checked">
-                    <bool>true</bool>
-                   </property>
-                  </widget>
-                 </item>
-                 <item>
                   <widget class="QCheckBox" name="saveErrCB">
                    <property name="toolTip">
                     <string>若有真值，将计算并输出误差统计</string>
@@ -1112,6 +1095,30 @@ p, li { white-space: pre-wrap; }
                     <bool>true</bool>
                    </property>
                   </widget>
+                 </item>
+                 <item>
+                  <layout class="QHBoxLayout" name="horizontalLayout_7">
+                   <item>
+                    <widget class="QCheckBox" name="saveJsonCB">
+                     <property name="toolTip">
+                      <string>将推理关键点/框保存为 JSON 文件</string>
+                     </property>
+                     <property name="text">
+                      <string>保存json</string>
+                     </property>
+                     <property name="checked">
+                      <bool>true</bool>
+                     </property>
+                    </widget>
+                   </item>
+                   <item>
+                    <widget class="QCheckBox" name="checkBox">
+                     <property name="text">
+                      <string>保存部分标签json</string>
+                     </property>
+                    </widget>
+                   </item>
+                  </layout>
                  </item>
                  <item>
                   <widget class="QPushButton" name="batchInferBtn">

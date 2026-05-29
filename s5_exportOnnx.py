@@ -1,19 +1,17 @@
 from ultralytics import YOLO
 import time
 
-name = 'train_10'
 
+def exportYoloOnnx(path):
+    model = YOLO(path+'/weights/best.pt')  # load a pretrained model (recommended for training)
+    model.export(format="onnx", device="0")
 
-def exportYoloOnnx():
-    model = YOLO('./runs/pose/'+name+'/weights/best.pt')  # load a pretrained model (recommended for training)
-    model.export(format="onnx")
-
-def exportHRNetOnnx():
+def exportHRNetOnnx(path):
     import copy
     import json
     from pathlib import Path
 
-    last_checkpoint_path = Path(f'./runs/HRNet/{name}/last_checkpoint').expanduser().resolve()
+    last_checkpoint_path = Path(f'{path}/last_checkpoint').expanduser().resolve()
     if not last_checkpoint_path.exists():
         raise FileNotFoundError(f'last_checkpoint file not found: {last_checkpoint_path}')
 
@@ -249,5 +247,12 @@ def exportHRNetOnnx():
 
 if __name__ == '__main__':
     
-    # exportYoloOnnx()
-    exportHRNetOnnx()
+    workspace = "/home/ebots/Desktop/zhq/VisualFactoryTest/"
+    yolo_path = workspace + 'runs/pose/train_20260528_130710'
+    hrnet_path = workspace + 'runs/HRNet/train_20260528_130710'
+
+    '''
+    下面两个函数不能同时跑，一次性只能运行一个
+    '''
+    exportYoloOnnx(yolo_path)
+    exportHRNetOnnx(hrnet_path)

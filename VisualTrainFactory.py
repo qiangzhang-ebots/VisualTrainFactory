@@ -312,8 +312,71 @@ class VisualTrainFactoryWindow(QMainWindow):
 
         self.YoloTrainBtn.clicked.connect(self.yolo_train_slot)
         self.HRNetTrainBtn.clicked.connect(self.hrnet_train_slot) 
+        self.exportYoloOnnxBtn.clicked.connect(self.export_yolo_onnx_slot)
+        self.exportHRNetOnnxBtn.clicked.connect(self.export_hrnet_onnx_slot)
         # 批量推理按钮
         self.batchInferBtn.clicked.connect(self.batch_infer_slot)
+
+    def _get_selected_model_path_from_combo(self, combo_name: str):
+        combo = getattr(self, combo_name, None)
+        if combo is None:
+            return None
+
+        try:
+            model_path = combo.currentData()
+        except Exception:
+            model_path = None
+
+        if isinstance(model_path, str):
+            model_path = model_path.strip()
+
+        return model_path or None
+
+    def export_yolo_onnx_slot(self):
+        """导出当前选择的 YOLO 训练结果对应的 ONNX 模型。"""
+        import traceback
+
+        try:
+            from s5_exportOnnx import exportYoloOnnx
+
+            work_dir = self._get_work_directory_path()
+            if work_dir is None:
+                self._append_log_message('请先选择有效的工作目录。')
+                return
+
+            yolo_model_path = self._get_selected_model_path_from_combo('YoloModelCombbox')
+            if not yolo_model_path:
+                self._append_log_message('请先在推理页选择一个 YOLO 模型。')
+                return
+
+            self._append_log_message(f'开始导出 YOLO ONNX: {yolo_model_path}')
+            exportYoloOnnx(yolo_model_path)
+            self._append_log_message(f'YOLO ONNX 导出完成')
+        except Exception as exc:
+            self._append_log_message(f'YOLO ONNX 导出失败: {exc}\n{traceback.format_exc()}')
+
+    def export_hrnet_onnx_slot(self):
+        """导出当前选择的 HRNet 训练结果对应的 ONNX 模型。"""
+        import traceback
+
+        try:
+            from s5_exportOnnx import exportHRNetOnnx
+
+            work_dir = self._get_work_directory_path()
+            if work_dir is None:
+                self._append_log_message('请先选择有效的工作目录。')
+                return
+
+            hrnet_model_path = self._get_selected_model_path_from_combo('HRNetModelCombbox')
+            if not hrnet_model_path:
+                self._append_log_message('请先在推理页选择一个 HRNet 模型。')
+                return
+
+            self._append_log_message(f'开始导出 HRNet ONNX: {hrnet_model_path}')
+            onnx_path = exportHRNetOnnx(hrnet_model_path)
+            self._append_log_message(f'HRNet ONNX 导出完成: {onnx_path}')
+        except Exception as exc:
+            self._append_log_message(f'HRNet ONNX 导出失败: {exc}\n{traceback.format_exc()}')
 
     def yolo_train_slot(self):
         """YOLO训练按钮的槽函数，调用s3_train.py的trainYolo。"""
@@ -1497,11 +1560,7 @@ class VisualTrainFactoryWindow(QMainWindow):
                 yolo_model_path = None
 
         hrnet_model_path = None
-        if hasattr(self, 'HRNetModelCombbox') and self.HRNetModelCombbox is not None:
-            try:
-                hrnet_model_path = self.HRNetModelCombbox.currentData()
-            except Exception:
-                hrnet_model_path = None
+        hrnet_model_path = self._get_selected_model_path_from_combo('HRNetModelCombbox')
 
         if not yolo_model_path:
             self._append_log_message('请在推理页选择一个 YOLO 模型（runs/pose 下的子目录）。')
