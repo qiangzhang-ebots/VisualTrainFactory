@@ -115,6 +115,20 @@ class VisualTrainFactoryWindow(QMainWindow):
         if not self._restore_persisted_state():
             self._refresh_preview_label_scan_result([])
 
+        # 启动后默认最大化主窗口
+        try:
+            self.showMaximized()
+        except Exception:
+            try:
+                from PySide6.QtCore import Qt
+                self.setWindowState(self.windowState() | Qt.WindowMaximized)
+            except Exception:
+                try:
+                    from PyQt5.QtCore import Qt
+                    self.setWindowState(self.windowState() | Qt.WindowMaximized)
+                except Exception:
+                    pass
+
     def keyPressEvent(self, event):
         """在训练数据可视化页支持 A/D 快捷键翻页。"""
         if self._handle_visual_train_key_press(event.key(), event.modifiers(), event.isAutoRepeat()):
