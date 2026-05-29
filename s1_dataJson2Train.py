@@ -447,7 +447,7 @@ def process_filesHRNet(convert_info: ConvertInfo):
 			image_width = int(data['imageWidth'])
 			image_height = int(data['imageHeight'])
 			image_file, image_suffix = _find_image_file(json_root, rel_path, data)
-			file_name = _flatten_rel_path(Path(rel_path).with_suffix('')) + image_suffix
+			file_name = Path(rel_path).stem + image_suffix
 
 			dataset['images'].append(
 				{
@@ -494,7 +494,7 @@ if __name__ == '__main__':
 	convert_info.DatasetsDir = workspace + 'datasets'
 
 	try:
-		process_filesYolo(convert_info)
+		# process_filesYolo(convert_info)
 		process_filesHRNet(convert_info)
 	except FileNotFoundError as exc:
 		print(exc)
