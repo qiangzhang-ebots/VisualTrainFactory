@@ -1011,6 +1011,12 @@ p, li { white-space: pre-wrap; }
             <attribute name="title">
              <string>批量推理</string>
             </attribute>
+               <property name="styleSheet">
+                <string notr="true">QCheckBox::indicator { width: 18px; height: 18px; }
+    QCheckBox::indicator:unchecked { border: 1px solid #8f8f8f; background: #ffffff; }
+    QCheckBox::indicator:checked { border: 1px solid #2b7bd5; background: #2b7bd5; }
+    QCheckBox { spacing: 8px; }</string>
+               </property>
             <layout class="QVBoxLayout" name="verticalLayout_batchInferTab">
              <property name="spacing">
               <number>0</number>
@@ -1112,7 +1118,7 @@ p, li { white-space: pre-wrap; }
                     </widget>
                    </item>
                    <item>
-                    <widget class="QCheckBox" name="checkBox">
+                    <widget class="QCheckBox" name="savePartJsonCB">
                      <property name="text">
                       <string>保存部分标签json</string>
                      </property>

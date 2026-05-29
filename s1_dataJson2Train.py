@@ -302,7 +302,7 @@ def labelme2yolo(json_file, txt_file, img_w, img_h, convert_info):
 		if not 1 <= len(points) <= convert_info.NFP:
 			continue
 
-		if label_text not in label_map and not label_text.isdigit():
+		if label_text not in label_map:
 			continue
 
 		lines.append(quad_shape_to_yolo_line(shape, json_file, img_w, img_h, convert_info, occupied_rects))
