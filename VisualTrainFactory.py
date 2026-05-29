@@ -16,26 +16,26 @@ from s2_visualTrainData import visual_Yolo_trainData
 
 def _import_qt_widgets():
     try:
-        from PySide6.QtWidgets import QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox
+        from PySide6.QtWidgets import QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox, QListWidget, QListWidgetItem
         from PySide6.QtCore import QModelIndex, QEvent, QObject, Qt
 
-        return QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox, QModelIndex, QEvent, QObject, Qt, "pyside6"
+        return QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox, QListWidget, QListWidgetItem, QModelIndex, QEvent, QObject, Qt, "pyside6"
     except ImportError:
         pass
 
     try:
-        from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox
+        from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox, QListWidget, QListWidgetItem
         from PyQt5.QtCore import QModelIndex, QEvent, QObject, Qt
 
-        return QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox, QModelIndex, QEvent, QObject, Qt, "pyqt5"
+        return QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox, QListWidget, QListWidgetItem, QModelIndex, QEvent, QObject, Qt, "pyqt5"
     except ImportError:
         pass
 
     try:
-        from PySide2.QtWidgets import QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox
+        from PySide2.QtWidgets import QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox, QListWidget, QListWidgetItem
         from PySide2.QtCore import QModelIndex, QEvent, QObject, Qt
 
-        return QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox, QModelIndex, QEvent, QObject, Qt, "pyside2"
+        return QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox, QListWidget, QListWidgetItem, QModelIndex, QEvent, QObject, Qt, "pyside2"
     except ImportError as exc:
         raise ImportError("Need PySide6, PyQt5, or PySide2 installed") from exc
 
@@ -73,7 +73,7 @@ def _load_ui_into(window, ui_path: Path, backend: str):
     window.setWindowTitle(loaded.windowTitle())
 
 
-QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox, QModelIndex, QEvent, QObject, Qt, QT_BACKEND = _import_qt_widgets()
+QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox, QListWidget, QListWidgetItem, QModelIndex, QEvent, QObject, Qt, QT_BACKEND = _import_qt_widgets()
 
 
 RECENT_WORK_DIRECTORY_KEY = "recentWorkDirectories"
@@ -357,6 +357,28 @@ class VisualTrainFactoryWindow(QMainWindow):
                 widget_state['__tabWidgetMain__'] = int(tab_widget.currentIndex())
             except Exception:
                 pass
+        # Persist which labels are checked in the "保存部分标签" 列表（如果存在）
+        try:
+            checked_labels = []
+            if hasattr(self, '_save_part_label_list') and self._save_part_label_list is not None:
+                for idx in range(self._save_part_label_list.count()):
+                    item = self._save_part_label_list.item(idx)
+                    if item is None:
+                        continue
+                    widget = self._save_part_label_list.itemWidget(item)
+                    if widget is None:
+                        continue
+                    try:
+                        if bool(widget.isChecked()):
+                            label_text = str(widget.text()).strip() if hasattr(widget, 'text') else ''
+                            if label_text:
+                                checked_labels.append(label_text)
+                    except Exception:
+                        continue
+            if checked_labels:
+                widget_state['__save_part_label_checked__'] = checked_labels
+        except Exception:
+            pass
 
         return widget_state
 
@@ -536,6 +558,41 @@ class VisualTrainFactoryWindow(QMainWindow):
         label_rows = payload.get('labelMappingRows', [])
         self._restore_label_mapping_rows(label_rows)
         self._restore_widget_state(self._saved_widget_state)
+        # 恢复完 widget 状态后，根据 savePartJsonCB 的当前值同步面板可见性与内容
+        try:
+            panel = getattr(self, '_save_part_label_panel', None)
+            list_widget = getattr(self, '_save_part_label_list', None)
+            cb = getattr(self, 'savePartJsonCB', None)
+            if cb is not None and panel is not None:
+                panel.setVisible(bool(cb.isChecked()))
+                # 若需要显示，则立即填充列表内容
+                if cb.isChecked() and callable(getattr(self, '_populate_save_part_label_widget', None)):
+                    try:
+                        self._populate_save_part_label_widget()
+                    except Exception:
+                        pass
+                    # 恢复用户在保存部分标签列表中上次勾选的项
+                    try:
+                        saved_checks = self._saved_widget_state.get('__save_part_label_checked__', []) if isinstance(self._saved_widget_state, dict) else []
+                        if saved_checks and hasattr(self, '_save_part_label_list') and self._save_part_label_list is not None:
+                            for idx in range(self._save_part_label_list.count()):
+                                item = self._save_part_label_list.item(idx)
+                                if item is None:
+                                    continue
+                                widget = self._save_part_label_list.itemWidget(item)
+                                if widget is None:
+                                    continue
+                                try:
+                                    label_text = str(widget.text()).strip() if hasattr(widget, 'text') else ''
+                                    widget.setChecked(bool(label_text in saved_checks))
+                                except Exception:
+                                    continue
+                    except Exception:
+                        pass
+            elif panel is not None:
+                panel.setVisible(False)
+        except Exception:
+            pass
         return True
 
     def _set_work_directory(self, directory: str):
@@ -589,6 +646,9 @@ class VisualTrainFactoryWindow(QMainWindow):
         self.exportHRNetOnnxBtn.clicked.connect(self.export_hrnet_onnx_slot)
         # 批量推理按钮
         self.batchInferBtn.clicked.connect(self.batch_infer_slot)
+        # 让 saveJsonCB 和 savePartJsonCB 互斥：一方选中时取消另一方
+        self.saveJsonCB.toggled.connect(self._on_saveJsonCB_toggled)
+        self.savePartJsonCB.toggled.connect(self._on_savePartJsonCB_toggled)
 
     def _get_selected_model_path_from_combo(self, combo_name: str):
         combo = getattr(self, combo_name, None)
@@ -861,6 +921,123 @@ class VisualTrainFactoryWindow(QMainWindow):
 
         self._populate_label_mapping_layout([])
 
+        # 创建保存部分标签面板（如果 UI 中存在批量推理设置）
+        try:
+            self._create_save_part_label_widget()
+        except Exception:
+            pass
+
+    def _create_save_part_label_widget(self):
+        """在批量推理设置中创建一个用于选择要保存的部分标签的面板（默认隐藏）。"""
+        try:
+            group = getattr(self, 'batchInferSettingGroupBox', None)
+            if group is None:
+                return
+            layout = group.layout()
+            if layout is None:
+                return
+
+            # 主面板
+            panel = QWidget(group)
+            panel.setObjectName('savePartLabelPanel')
+            v = QVBoxLayout(panel)
+            v.setContentsMargins(8, 4, 8, 4)
+            v.setSpacing(4)
+
+            label = QLabel('选择要保存的标签（仅在保存部分标签时生效）', panel)
+            label.setStyleSheet('color: #cbd5e1;')
+            v.addWidget(label)
+
+            list_widget = QListWidget(panel)
+            list_widget.setSelectionMode(QAbstractItemView.NoSelection)
+            # 增加行间距和内边距，避免复选框连成一片
+            try:
+                list_widget.setSpacing(1)
+            except Exception:
+                pass
+            list_widget.setStyleSheet('QListWidget { background: #071027; color: #f8fafc; padding: 4px; } QListWidget::item { margin-bottom: 4px; }')
+            v.addWidget(list_widget)
+
+            panel.setVisible(False)
+
+            # 插入到 batchInferBtn 之前
+            try:
+                idx = layout.indexOf(self.batchInferBtn)
+                if idx >= 0:
+                    layout.insertWidget(idx, panel)
+                else:
+                    layout.addWidget(panel)
+            except Exception:
+                layout.addWidget(panel)
+
+            self._save_part_label_panel = panel
+            self._save_part_label_list = list_widget
+        except Exception:
+            pass
+
+    def _populate_save_part_label_widget(self):
+        """使用当前的标签映射行填充保存部分标签列表。"""
+        try:
+            if not hasattr(self, '_save_part_label_list') or self._save_part_label_list is None:
+                return
+            self._save_part_label_list.clear()
+
+            rows = []
+            try:
+                rows = self._collect_label_mapping_rows()
+            except Exception:
+                rows = []
+
+            for row in rows:
+                label_text = str(row.get('label', '')).strip()
+                if not label_text:
+                    continue
+                # 使用显式 QCheckBox 确保在各种样式下都能看到复选框
+                list_item = QListWidgetItem()
+                checkbox = QCheckBox(label_text)
+                checkbox.setStyleSheet('color: #f8fafc;')
+                checked = (str(row.get('usage', '')).strip() == '用于训练')
+                try:
+                    checkbox.setChecked(bool(checked))
+                except Exception:
+                    pass
+                self._save_part_label_list.addItem(list_item)
+                self._save_part_label_list.setItemWidget(list_item, checkbox)
+        except Exception:
+            pass
+
+    def _get_save_part_label_ids(self):
+        """返回用户在“保存部分标签”面板中勾选的标签对应的训练时 ID 集合（int）。"""
+        ids = set()
+        try:
+            if not hasattr(self, '_save_part_label_list') or self._save_part_label_list is None:
+                return ids
+            label_map = self.get_label_id_mapping() or {}
+            for idx in range(self._save_part_label_list.count()):
+                item = self._save_part_label_list.item(idx)
+                if item is None:
+                    continue
+                widget = self._save_part_label_list.itemWidget(item)
+                if widget is None:
+                    continue
+                try:
+                    checked = bool(widget.isChecked()) if hasattr(widget, 'isChecked') else False
+                except Exception:
+                    checked = False
+                if not checked:
+                    continue
+                label_text = str(widget.text()).strip() if hasattr(widget, 'text') else ''
+                if not label_text:
+                    continue
+                try:
+                    if label_text in label_map:
+                        ids.add(int(label_map[label_text]))
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return ids
+
     def _clear_layout(self, layout):
         while layout.count():
             item = layout.takeAt(0)
@@ -988,7 +1165,12 @@ class VisualTrainFactoryWindow(QMainWindow):
 
             self._label_id_edits[label_text] = row_input
             self._label_usage_combos[label_text] = usage_combo
-
+            
+        # 同步并刷新保存部分标签面板（如果存在）
+        try:
+            self._populate_save_part_label_widget()
+        except Exception:
+            pass
     def _default_id_text_from_label(self, label_text):
         try:
             return str(int(str(label_text).strip()))
@@ -1466,6 +1648,46 @@ class VisualTrainFactoryWindow(QMainWindow):
             self._visual_train_current_index = (self._visual_train_current_index + 1) % len(self._visual_train_image_pairs)
         self._show_visual_train_current_image()
 
+    def _on_saveJsonCB_toggled(self, checked):
+        """当 `saveJsonCB` 被切换时，若为选中则取消 `savePartJsonCB`。"""
+        try:
+            other = getattr(self, 'savePartJsonCB', None)
+            if other is None:
+                return
+            if checked:
+                other.blockSignals(True)
+                other.setChecked(False)
+                other.blockSignals(False)
+            # 如果选择保存全部 json，则隐藏部分标签面板
+            try:
+                panel = getattr(self, '_save_part_label_panel', None)
+                if panel is not None and checked:
+                    panel.setVisible(False)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _on_savePartJsonCB_toggled(self, checked):
+        """当 `savePartJsonCB` 被切换时，若为选中则取消 `saveJsonCB`。"""
+        try:
+            other = getattr(self, 'saveJsonCB', None)
+            if other is None:
+                return
+            if checked:
+                other.blockSignals(True)
+                other.setChecked(False)
+                other.blockSignals(False)
+            # 根据状态显示或隐藏保存部分标签面板
+            try:
+                panel = getattr(self, '_save_part_label_panel', None)
+                if panel is not None:
+                    panel.setVisible(bool(checked))
+            except Exception:
+                pass
+        except Exception:
+            pass
+
     def split_TrainData_slot(self):
         """将 group_data 目录里的图片和 JSON 划分为训练数据 """
         group_data_directory = self._get_group_data_directory()
@@ -1595,7 +1817,7 @@ class VisualTrainFactoryWindow(QMainWindow):
             usage_combo = self._label_usage_combos.get(label_text)
             if usage_combo is not None:
                 usage_text = usage_combo.currentText().strip()
-                if usage_text and usage_text not in ('请选择用途', '用于训练'):
+                if usage_text and usage_text != '用于训练':
                     continue
 
             raw_value = line_edit.text().strip()
@@ -1899,6 +2121,7 @@ class VisualTrainFactoryWindow(QMainWindow):
 
                 # 根据 UI 复选框决定是否保存 JSON、可视化图片或统计误差
                 save_json_enabled = False
+                save_partjson_enabled = False
                 save_img_enabled = False
                 save_err_enabled = False
                 try:
@@ -1906,6 +2129,12 @@ class VisualTrainFactoryWindow(QMainWindow):
                         save_json_enabled = bool(self.saveJsonCB.isChecked())
                 except Exception:
                     save_json_enabled = False
+
+                try:
+                    if hasattr(self, 'savePartJsonCB') and self.savePartJsonCB is not None:
+                        save_partjson_enabled = bool(self.savePartJsonCB.isChecked())
+                except Exception:
+                    save_partjson_enabled = False
 
                 try:
                     if hasattr(self, 'saveImgCB') and self.saveImgCB is not None:
@@ -1957,6 +2186,18 @@ class VisualTrainFactoryWindow(QMainWindow):
                         if save_json_enabled:
                             try:
                                 save_result(str(img_path), img_path.name, ret, str(json_path), class_names=class_names)
+                            except Exception:
+                                pass
+                        
+                        if save_partjson_enabled:
+                            # 获取用户勾选的 label 对应的训练时 ID 集合，并传给 save_result 的 part_labels 参数
+                            try:
+                                part_ids = self._get_save_part_label_ids()
+                                if part_ids:
+                                    save_result(str(img_path), img_path.name, ret, str(json_path), class_names=class_names, part_labels=part_ids)
+                                else:
+                                    # 若没有选中任何 label，则跳过保存
+                                    pass
                             except Exception:
                                 pass
 

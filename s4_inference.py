@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional, Sequence, Union, Set
 
 import cv2
 import numpy as np
@@ -160,19 +160,46 @@ def draw_results(image: Union[str, Path, np.ndarray], ret: Sequence[Any], class_
     return vis_img
 
 
-def save_result(image: Union[str, Path, np.ndarray, None], imgName: str, ret: Sequence[Any], save_path: Union[str, Path], class_names: Optional[Dict[int, str]] = None) -> None:
+def save_result(image: Union[str, Path, np.ndarray, None], imgName: str, ret: Sequence[Any], save_path: Union[str, Path], class_names: Optional[Dict[int, str]] = None, part_labels: Optional[Set[int]] = None) -> None:
     save_path = Path(save_path)
     save_path.parent.mkdir(parents=True, exist_ok=True)
 
-    json_data: Dict[str, Any] = {
-        'version': '5.0.1',
-        'flags': {},
-        'shapes': [],
-        'imagePath': imgName,
-        'imageData': None,
-        'imageHeight': 0,
-        'imageWidth': 0,
-    }
+    if part_labels is None:
+        json_data: Dict[str, Any] = {
+            'version': '5.0.1',
+            'flags': {},
+            'shapes': [],
+            'imagePath': imgName,
+            'imageData': None,
+            'imageHeight': 0,
+            'imageWidth': 0,
+        }
+    else:
+        # 尝试在 image 所在路径或使用 imgName 将后缀替换为 .json 来找到同名的 json
+        json_data = None
+        candidates = None
+        p = Path(image)
+        candidates = p.with_suffix('.json')
+
+        try:
+            if candidates.exists():
+                json_text = candidates.read_text(encoding='utf-8')
+                json_data = json.loads(json_text)
+        except Exception:
+            # 忽略读取或解析错误，尝试下一个候选
+            json_data = None
+
+        if json_data is None:
+            # 若未找到有效的 json，退回到新建结构
+            json_data = {
+                'version': '5.0.1',
+                'flags': {},
+                'shapes': [],
+                'imagePath': imgName,
+                'imageData': None,
+                'imageHeight': 0,
+                'imageWidth': 0,
+            }
 
     img_h, img_w = _result_image_size(image, ret)
     json_data['imageHeight'] = img_h
@@ -188,11 +215,14 @@ def save_result(image: Union[str, Path, np.ndarray, None], imgName: str, ret: Se
             keypoints_data = _to_numpy(keypoints_obj.data)
 
             mapping = class_names or {}
+            # part_labels 是一个可选的 int 集合，若提供则只保存这些 class_id 的条目
+            part_set = set(part_labels) if part_labels is not None else None
             for obj_idx in range(keypoints_data.shape[0]):
                 if boxes_conf is not None and obj_idx < len(boxes_conf) and float(boxes_conf[obj_idx]) < BOX_SCORE_THR:
                     continue
-
                 class_id = int(boxes_cls[obj_idx]) if boxes_cls is not None and obj_idx < len(boxes_cls) else -1
+                if part_set is not None and class_id not in part_set:
+                    continue
                 if class_id not in mapping:
                     continue
 
