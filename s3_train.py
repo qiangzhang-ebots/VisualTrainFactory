@@ -382,12 +382,12 @@ if __name__ == '__main__':
     multiprocessing.freeze_support()
 
     
-    # if not is_torchrun_worker:
-    #     '''
-    #     trainHRNet中，如果是两块gpu，会开启torch的并行。这个时候，会再跑一次trainYolo
-    #     为了让trainYolo，只跑一次。这里加了一个判断
-    #     '''
-    #     trainYolo(workspace, labelName = {0: '0', 1: '1'}, epochs=100, batch_size=16, img_size=640, gpu='0,1', logName=_get_log_name(), weights=None)
+    if not is_torchrun_worker:
+        '''
+        trainHRNet中，如果是两块gpu，会开启torch的并行。这个时候，会再跑一次trainYolo
+        为了让trainYolo，只跑一次。这里加了一个判断
+        '''
+        trainYolo(workspace, labelName = {0: '0', 1: '1'}, epochs=100, batch_size=16, img_size=640, gpu='0,1', logName=_get_log_name(), weights=None)
 
 
     trainHRNet(workspace, epochs=100, batch_size=16, img_size=640, gpu='0,1', logName=_get_log_name())

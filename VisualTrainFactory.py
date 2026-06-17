@@ -1,3 +1,5 @@
+import os
+import sys
 import multiprocessing
 from pathlib import Path
 import contextlib
@@ -16,26 +18,26 @@ from s2_visualTrainData import visual_Yolo_trainData
 
 def _import_qt_widgets():
     try:
-        from PySide6.QtWidgets import QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox, QListWidget, QListWidgetItem
+        from PySide6.QtWidgets import QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox, QListWidget, QListWidgetItem, QMessageBox
         from PySide6.QtCore import QModelIndex, QEvent, QObject, Qt
 
-        return QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox, QListWidget, QListWidgetItem, QModelIndex, QEvent, QObject, Qt, "pyside6"
+        return QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox, QListWidget, QListWidgetItem, QMessageBox, QModelIndex, QEvent, QObject, Qt, "pyside6"
     except ImportError:
         pass
 
     try:
-        from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox, QListWidget, QListWidgetItem
+        from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox, QListWidget, QListWidgetItem, QMessageBox
         from PyQt5.QtCore import QModelIndex, QEvent, QObject, Qt
 
-        return QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox, QListWidget, QListWidgetItem, QModelIndex, QEvent, QObject, Qt, "pyqt5"
+        return QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox, QListWidget, QListWidgetItem, QMessageBox, QModelIndex, QEvent, QObject, Qt, "pyqt5"
     except ImportError:
         pass
 
     try:
-        from PySide2.QtWidgets import QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox, QListWidget, QListWidgetItem
+        from PySide2.QtWidgets import QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox, QListWidget, QListWidgetItem, QMessageBox
         from PySide2.QtCore import QModelIndex, QEvent, QObject, Qt
 
-        return QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox, QListWidget, QListWidgetItem, QModelIndex, QEvent, QObject, Qt, "pyside2"
+        return QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox, QListWidget, QListWidgetItem, QMessageBox, QModelIndex, QEvent, QObject, Qt, "pyside2"
     except ImportError as exc:
         raise ImportError("Need PySide6, PyQt5, or PySide2 installed") from exc
 
@@ -73,7 +75,7 @@ def _load_ui_into(window, ui_path: Path, backend: str):
     window.setWindowTitle(loaded.windowTitle())
 
 
-QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox, QListWidget, QListWidgetItem, QModelIndex, QEvent, QObject, Qt, QT_BACKEND = _import_qt_widgets()
+QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox, QListWidget, QListWidgetItem, QMessageBox, QModelIndex, QEvent, QObject, Qt, QT_BACKEND = _import_qt_widgets()
 
 
 RECENT_WORK_DIRECTORY_KEY = "recentWorkDirectories"
@@ -1721,6 +1723,35 @@ class VisualTrainFactoryWindow(QMainWindow):
         convert_info = self._build_train_split_convert_info(group_data_directory)
         if convert_info is None:
             return
+
+        used_ids = sorted(set(convert_info.Label2Int.values()))
+        if used_ids:
+            expected_ids = list(range(len(used_ids)))
+            if used_ids != expected_ids:
+                error_msg = (
+                    '标签ID不符合YOLO要求！\n\n'
+                    'YOLO要求标签ID必须从0开始连续递增（0, 1, 2, 3...）。\n\n'
+                    f'当前标签ID: {used_ids}\n'
+                    f'期望标签ID: {expected_ids}\n\n'
+                    '请修正标签映射中的"训练时ID"后再进行数据划分。'
+                )
+                self._append_log_message(error_msg.replace('\n', ' '))
+                msg_box = QMessageBox(self)
+                msg_box.setIcon(QMessageBox.Warning)
+                msg_box.setWindowTitle('标签ID检查失败')
+                msg_box.setText(error_msg)
+                msg_box.setStyleSheet(
+                    'QMessageBox { background-color: #1e293b; color: #f8fafc; }'
+                    'QMessageBox QLabel { color: #f8fafc; font-size: 13px; }'
+                    'QPushButton {'
+                    '  background-color: #2563eb; color: #ffffff;'
+                    '  border: none; border-radius: 4px;'
+                    '  padding: 6px 20px; font-size: 13px;'
+                    '}'
+                    'QPushButton:hover { background-color: #1d4ed8; }'
+                )
+                msg_box.exec()
+                return
 
         result_holder = {'error': None, 'stdout': '', 'train_files': None, 'val_files': None, 'test_files': None}
 
