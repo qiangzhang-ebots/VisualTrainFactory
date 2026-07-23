@@ -68,8 +68,8 @@ def trainYolo(workspace, labelName, epochs, batch_size,
         with open(yaml_path, 'r', encoding='utf-8') as handle:
             data = yaml.safe_load(handle) or {}
         # names字段自动同步labelName
-        if data.get('names') != {int(k): str(v) for k, v in labelName.items()}:
-            data['names'] = {int(k): str(v) for k, v in labelName.items()}
+        if data.get('names') != {int(v): str(k) for k, v in labelName.items()}:
+            data['names'] = {int(v): str(k) for k, v in labelName.items()}
             with open(yaml_path, 'w', encoding='utf-8') as handle:
                 yaml.safe_dump(data, handle, sort_keys=False, allow_unicode=True)
 

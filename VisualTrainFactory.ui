@@ -39,6 +39,36 @@ QCheckBox {
     color: #ffffff;
 }
 
+QCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+}
+
+QCheckBox::indicator:unchecked {
+    image: url(icons/checkbox_unchecked.png);
+}
+
+QCheckBox::indicator:checked {
+    image: url(icons/checkbox_checked.png);
+}
+
+QRadioButton {
+    color: #ffffff;
+}
+
+QRadioButton::indicator {
+    width: 16px;
+    height: 16px;
+}
+
+QRadioButton::indicator:unchecked {
+    image: url(icons/radio_unchecked.png);
+}
+
+QRadioButton::indicator:checked {
+    image: url(icons/radio_checked.png);
+}
+
 QLabel#labelTitle {
     color: #f7fbff;
     letter-spacing: 1px;
@@ -348,6 +378,89 @@ QStatusBar {
                 </property>
                 <property name="value">
                  <number>100</number>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <layout class="QHBoxLayout" name="horizontalLayout_tiff2png">
+              <item>
+               <widget class="QCheckBox" name="tiff2png">
+                <property name="text">
+                 <string>tiff2png</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLabel" name="labelTiff2PngHint">
+                <property name="text">
+                 <string>uint8(255*(img-min)/(max-min))</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <layout class="QHBoxLayout" name="horizontalLayout_dataSourceType">
+              <item>
+               <widget class="QRadioButton" name="radioSystem">
+                <property name="text">
+                 <string>system</string>
+                </property>
+                <property name="checked">
+                 <bool>true</bool>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QRadioButton" name="radioUi">
+                <property name="text">
+                 <string>ui</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <layout class="QHBoxLayout" name="horizontalLayout_denaliCams">
+              <item>
+               <widget class="QCheckBox" name="checkDenali0Cam0">
+                <property name="text">
+                 <string>denali0_cam0</string>
+                </property>
+                <property name="checked">
+                 <bool>true</bool>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="checkDenali0Cam1">
+                <property name="text">
+                 <string>denali0_cam1</string>
+                </property>
+                <property name="checked">
+                 <bool>true</bool>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="checkDenali1Cam0">
+                <property name="text">
+                 <string>denali1_cam0</string>
+                </property>
+                <property name="checked">
+                 <bool>true</bool>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="checkDenali1Cam1">
+                <property name="text">
+                 <string>denali1_cam1</string>
+                </property>
+                <property name="checked">
+                 <bool>true</bool>
                 </property>
                </widget>
               </item>

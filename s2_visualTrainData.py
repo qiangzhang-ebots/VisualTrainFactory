@@ -7,6 +7,30 @@ import cv2
 IMAGE_SUFFIXES = ('.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff')
 
 
+def _get_box_display_text(class_id, label_mapping_rows=None):
+    try:
+        class_id_int = int(class_id)
+    except (TypeError, ValueError):
+        return str(class_id)
+
+    if isinstance(label_mapping_rows, list):
+        for row in label_mapping_rows:
+            if not isinstance(row, dict):
+                continue
+            train_id = str(row.get('train_id', '')).strip()
+            label_name = str(row.get('label', '')).strip()
+            if not label_name or not train_id:
+                continue
+            try:
+                if int(train_id) == class_id_int:
+                    return f"{class_id_int}:{label_name}"
+            except (TypeError, ValueError):
+                if train_id == str(class_id_int):
+                    return f"{class_id_int}:{label_name}"
+
+    return str(class_id_int)
+
+
 def load_yolo_labels(label_path):
     labels = []
     label_file = Path(label_path)
@@ -41,7 +65,7 @@ def load_yolo_labels(label_path):
     return labels
 
 
-def draw_yolo_boxes(img, labels, color=(0, 255, 0)):
+def draw_yolo_boxes(img, labels, color=(0, 255, 0), label_mapping_rows=None):
     h, w = img.shape[:2]
     for label in labels:
         if len(label) == 6:
@@ -54,7 +78,8 @@ def draw_yolo_boxes(img, labels, color=(0, 255, 0)):
         x1, y1 = int(cx - bw / 2), int(cy - bh / 2)
         x2, y2 = int(cx + bw / 2), int(cy + bh / 2)
         cv2.rectangle(img, (x1, y1), (x2, y2), color, 1)
-        cv2.putText(img, str(cls), (x1, max(0, y1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 1)
+        display_text = _get_box_display_text(cls, label_mapping_rows)
+        cv2.putText(img, display_text, (x1, max(0, y1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 1)
 
         if keypoints:
             pts = []
@@ -77,7 +102,7 @@ def draw_yolo_boxes(img, labels, color=(0, 255, 0)):
     return img
 
 
-def visual_Yolo_trainData(img_path, txt_path):
+def visual_Yolo_trainData(img_path, txt_path, label_mapping_rows=None):
     img_file = Path(img_path)
     if not img_file.exists():
         return None
@@ -88,7 +113,7 @@ def visual_Yolo_trainData(img_path, txt_path):
 
     labels = load_yolo_labels(txt_path)
     if labels:
-        img = draw_yolo_boxes(img, labels)
+        img = draw_yolo_boxes(img, labels, label_mapping_rows=label_mapping_rows)
     return img
 
 

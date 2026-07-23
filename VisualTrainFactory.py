@@ -11,7 +11,7 @@ import time
 import shutil
 
 from ImageView import ImageView
-from s0_dataprocessing import find_images, process_data
+from s0_dataprocessing import collect_images, process_data
 from s1_dataJson2Train import ConvertInfo, process_filesHRNet, process_filesYolo
 from s2_visualTrainData import visual_Yolo_trainData
 
@@ -78,6 +78,18 @@ def _load_ui_into(window, ui_path: Path, backend: str):
 QApplication, QMainWindow, QFileDialog, QFileSystemModel, QLabel, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QHeaderView, QAbstractItemView, QCheckBox, QSpinBox, QDoubleSpinBox, QListWidget, QListWidgetItem, QMessageBox, QModelIndex, QEvent, QObject, Qt, QT_BACKEND = _import_qt_widgets()
 
 
+def _import_signal(backend: str):
+    if backend == "pyqt5":
+        from PyQt5.QtCore import pyqtSignal as Signal
+    elif backend == "pyside6":
+        from PySide6.QtCore import Signal
+    else:
+        from PySide2.QtCore import Signal
+    return Signal
+
+
+Signal = _import_signal(QT_BACKEND)
+
 RECENT_WORK_DIRECTORY_KEY = "recentWorkDirectories"
 MAX_RECENT_WORK_DIRECTORIES = 10
 CONFIG_FILE = Path(__file__).with_name("VisualFactoryConfig.json")
@@ -89,11 +101,15 @@ IMAGE_SUFFIXES = {'.jpg', '.jpeg', '.png', '.tif', '.tiff', '.bmp'}
 
 
 class VisualTrainFactoryWindow(QMainWindow):
+    log_message = Signal(str)
+
     def __init__(self, parent=None):
         """初始化主窗口并完成 UI、数据和信号的基础装配。"""
         super().__init__(parent)
         ui_path = Path(__file__).with_name("VisualTrainFactory.ui")
         _load_ui_into(self, ui_path, QT_BACKEND)
+        self.log_message.connect(self._append_log_message_ui)
+        self._apply_checkable_indicator_styles()
         self._folder_tree_model = QFileSystemModel(self)
         self._recent_work_directories = self._load_recent_work_directories()
         self._saved_label_mapping_rows = []
@@ -130,6 +146,39 @@ class VisualTrainFactoryWindow(QMainWindow):
                     self.setWindowState(self.windowState() | Qt.WindowMaximized)
                 except Exception:
                     pass
+
+    def _apply_checkable_indicator_styles(self):
+        """用黑勾/黑圆点图标替换默认灰色指示器，保证在深色背景上清晰可见。"""
+        icons_dir = Path(__file__).resolve().parent / 'icons'
+        checkbox_unchecked = (icons_dir / 'checkbox_unchecked.png').as_posix()
+        checkbox_checked = (icons_dir / 'checkbox_checked.png').as_posix()
+        radio_unchecked = (icons_dir / 'radio_unchecked.png').as_posix()
+        radio_checked = (icons_dir / 'radio_checked.png').as_posix()
+        self.setStyleSheet(
+            self.styleSheet()
+            + f'''
+QCheckBox::indicator {{
+    width: 16px;
+    height: 16px;
+}}
+QCheckBox::indicator:unchecked {{
+    image: url({checkbox_unchecked});
+}}
+QCheckBox::indicator:checked {{
+    image: url({checkbox_checked});
+}}
+QRadioButton::indicator {{
+    width: 16px;
+    height: 16px;
+}}
+QRadioButton::indicator:unchecked {{
+    image: url({radio_unchecked});
+}}
+QRadioButton::indicator:checked {{
+    image: url({radio_checked});
+}}
+'''
+        )
 
     def keyPressEvent(self, event):
         """在训练数据可视化页支持 A/D 快捷键翻页。"""
@@ -888,9 +937,16 @@ class VisualTrainFactoryWindow(QMainWindow):
         self._show_visual_train_image(0)
 
     def _append_log_message(self, message: str):
+        """Thread-safe log: Qt widget updates always happen on the GUI thread."""
+        print(message, flush=True)
+        if threading.current_thread() is threading.main_thread():
+            self._append_log_message_ui(message)
+        else:
+            self.log_message.emit(message)
+
+    def _append_log_message_ui(self, message: str):
         if hasattr(self, 'logTextBrowser') and self.logTextBrowser is not None:
             self.logTextBrowser.append(message)
-        print(message)
 
     def _configure_label_mapping_area(self):
         """构建标签映射表格，用于扫描后展示 label、类型和训练 id。"""
@@ -1580,7 +1636,15 @@ class VisualTrainFactoryWindow(QMainWindow):
             return
 
         current = self._visual_train_current_index + 1 if self._visual_train_current_index >= 0 else 0
-        self.progressLabel.setText(f'{current} / {total}')
+        filename = ''
+        if 0 <= self._visual_train_current_index < len(self._visual_train_image_pairs):
+            image_path = self._visual_train_image_pairs[self._visual_train_current_index][0]
+            filename = Path(image_path).name
+
+        if filename:
+            self.progressLabel.setText(f'{current} / {total}  {filename}')
+        else:
+            self.progressLabel.setText(f'{current} / {total}')
 
     def _show_visual_train_current_image(self):
         if not self._visual_train_image_pairs:
@@ -1592,7 +1656,11 @@ class VisualTrainFactoryWindow(QMainWindow):
 
         self._visual_train_current_index = max(0, min(self._visual_train_current_index, len(self._visual_train_image_pairs) - 1))
         image_path, label_path = self._visual_train_image_pairs[self._visual_train_current_index]
-        visual_image = visual_Yolo_trainData(str(image_path), str(label_path))
+        visual_image = visual_Yolo_trainData(
+            str(image_path),
+            str(label_path),
+            label_mapping_rows=getattr(self, '_saved_label_mapping_rows', None),
+        )
 
         if hasattr(self, '_visual_train_image_view') and self._visual_train_image_view is not None:
             self._visual_train_image_view.SetImage(visual_image)
@@ -2003,17 +2071,54 @@ class VisualTrainFactoryWindow(QMainWindow):
             self._append_log_message('请先选择工作目录。')
             return
 
+        radio_system = getattr(self, 'radioSystem', None)
+        radio_ui = getattr(self, 'radioUi', None)
+        if radio_system is not None and radio_system.isChecked():
+            source_mode = 'system'
+        elif radio_ui is not None and radio_ui.isChecked():
+            source_mode = 'ui'
+        else:
+            self._append_log_message('请选择数据源类型：system 或 ui。')
+            return
+
+        cam_checkbox_map = {
+            'denali0_cam0': getattr(self, 'checkDenali0Cam0', None),
+            'denali0_cam1': getattr(self, 'checkDenali0Cam1', None),
+            'denali1_cam0': getattr(self, 'checkDenali1Cam0', None),
+            'denali1_cam1': getattr(self, 'checkDenali1Cam1', None),
+        }
+        selected_cams = {
+            key for key, checkbox in cam_checkbox_map.items()
+            if checkbox is not None and checkbox.isChecked()
+        }
+        if not selected_cams:
+            self._append_log_message('请至少勾选一个相机（denali*_cam*）。')
+            return
+
         source_folder = Path(source_folder_text)
         work_directory_path = Path(work_directory_text)
         output_folder = work_directory_path / 'group_data'
         group_size = self.spinBoxGroupSize.value()
-        total_file_count = sum(1 for _ in find_images(source_folder))
+        if source_mode == 'system':
+            total_file_count = len(collect_images(source_folder, selected_cams=selected_cams))
+        else:
+            # ui 模式进度统计占位：先按全量图片计数，后续可按 ui 规则调整
+            total_file_count = len(collect_images(source_folder, selected_cams=None))
 
         result_holder = {'result': None, 'error': None}
 
         def _run_process_data():
             try:
-                result_holder['result'] = process_data(source_folder, output_folder, group_size)
+                tiff2png_checkbox = getattr(self, 'tiff2png', None)
+                tiff2png_checked = tiff2png_checkbox.isChecked() if tiff2png_checkbox is not None else False
+                result_holder['result'] = process_data(
+                    source_folder,
+                    output_folder,
+                    group_size,
+                    tiff2png=tiff2png_checked,
+                    selected_cams=selected_cams,
+                    source_mode=source_mode,
+                )
             except Exception as exc:
                 result_holder['error'] = exc
 
@@ -2142,8 +2247,20 @@ class VisualTrainFactoryWindow(QMainWindow):
         out_json_dir.mkdir(parents=True, exist_ok=True)
         out_vis_dir.mkdir(parents=True, exist_ok=True)
 
+        # Read all Qt checkbox / list state on the main thread before starting the worker.
+        save_json_enabled = bool(getattr(self, 'saveJsonCB', None) and self.saveJsonCB.isChecked())
+        save_partjson_enabled = bool(getattr(self, 'savePartJsonCB', None) and self.savePartJsonCB.isChecked())
+        save_img_enabled = bool(getattr(self, 'saveImgCB', None) and self.saveImgCB.isChecked())
+        save_err_enabled = bool(getattr(self, 'saveErrCB', None) and self.saveErrCB.isChecked())
+        part_ids = self._get_save_part_label_ids() if save_partjson_enabled else set()
+
         model = InferenceModel()
-        result_holder = {'combined_png': None}
+        result_holder = {
+            'combined_png': None,
+            'gt_files': None,
+            'pred_ret': None,
+            'error': None,
+        }
 
         def _run_batch():
             try:
@@ -2163,35 +2280,6 @@ class VisualTrainFactoryWindow(QMainWindow):
                     return
 
                 self._append_log_message(f'开始对 {total} 张图片进行推理...')
-
-                # 根据 UI 复选框决定是否保存 JSON、可视化图片或统计误差
-                save_json_enabled = False
-                save_partjson_enabled = False
-                save_img_enabled = False
-                save_err_enabled = False
-                try:
-                    if hasattr(self, 'saveJsonCB') and self.saveJsonCB is not None:
-                        save_json_enabled = bool(self.saveJsonCB.isChecked())
-                except Exception:
-                    save_json_enabled = False
-
-                try:
-                    if hasattr(self, 'savePartJsonCB') and self.savePartJsonCB is not None:
-                        save_partjson_enabled = bool(self.savePartJsonCB.isChecked())
-                except Exception:
-                    save_partjson_enabled = False
-
-                try:
-                    if hasattr(self, 'saveImgCB') and self.saveImgCB is not None:
-                        save_img_enabled = bool(self.saveImgCB.isChecked())
-                except Exception:
-                    save_img_enabled = False
-
-                try:
-                    if hasattr(self, 'saveErrCB') and self.saveErrCB is not None:
-                        save_err_enabled = bool(self.saveErrCB.isChecked())
-                except Exception:
-                    save_err_enabled = False
 
                 # collect ground-truth items and prediction results for later error statistics
                 gt_files = []
@@ -2235,14 +2323,9 @@ class VisualTrainFactoryWindow(QMainWindow):
                                 pass
                         
                         if save_partjson_enabled:
-                            # 获取用户勾选的 label 对应的训练时 ID 集合，并传给 save_result 的 part_labels 参数
                             try:
-                                part_ids = self._get_save_part_label_ids()
                                 if part_ids:
                                     save_result(str(img_path), img_path.name, ret, str(json_path), class_names=class_names, part_labels=part_ids)
-                                else:
-                                    # 若没有选中任何 label，则跳过保存
-                                    pass
                             except Exception:
                                 pass
 
@@ -2263,30 +2346,14 @@ class VisualTrainFactoryWindow(QMainWindow):
                     except Exception as exc:
                         self._append_log_message(f'处理文件 {img_path} 失败: {exc}')
 
-                # 如果用户勾选了统计误差，调用 s4_inference.statistics_result
-                if save_err_enabled:
-                    try:
-                        self._append_log_message('开始统计误差...')
-                        # stats runs may be expensive; run synchronously here but catch errors
-                        # use the previously constructed base_ret_dir for result paths
-                        statistics_result(gt_files, pred_ret, class_names, str(base_ret_dir))
-                        self._append_log_message('误差统计完成。')
-                        hist_dir = Path(base_ret_dir) / 'error_hist'
-                        combined_png = hist_dir / 'combined.png'
-                        if not combined_png.exists() and hist_dir.exists():
-                            pngs = sorted(hist_dir.glob('*.png'))
-                            combined_png = pngs[0] if pngs else combined_png
-
-                        if combined_png.exists():
-                            result_holder['combined_png'] = combined_png
-                    except Exception as exc:
-                        self._append_log_message(f'误差统计失败: {exc}')
-
+                result_holder['gt_files'] = gt_files
+                result_holder['pred_ret'] = pred_ret
                 self._append_log_message(f'批量推理完成，结果保存在: {out_json_dir} 与 {out_vis_dir}')
             except Exception as exc:
+                result_holder['error'] = f'{exc}\n{traceback.format_exc()}'
                 self._append_log_message(f'批量推理失败: {exc}\n{traceback.format_exc()}')
 
-        worker = threading.Thread(target=_run_batch, daemon=True)
+        worker = threading.Thread(target=_run_batch, daemon=True, name='batch-infer')
         worker.start()
 
         while worker.is_alive():
@@ -2294,6 +2361,32 @@ class VisualTrainFactoryWindow(QMainWindow):
             time.sleep(0.2)
 
         worker.join()
+        QApplication.processEvents()  # flush any queued log_message signals
+
+        if result_holder.get('error'):
+            return
+
+        # Error statistics + matplotlib must run on the GUI thread (Agg is also forced in s4_inference).
+        if save_err_enabled and result_holder.get('gt_files') is not None and result_holder.get('pred_ret') is not None:
+            try:
+                self._append_log_message('开始统计误差...')
+                statistics_result(
+                    result_holder['gt_files'],
+                    result_holder['pred_ret'],
+                    class_names,
+                    str(base_ret_dir),
+                )
+                self._append_log_message('误差统计完成。')
+                hist_dir = Path(base_ret_dir) / 'error_hist'
+                combined_png = hist_dir / 'combined.png'
+                if not combined_png.exists() and hist_dir.exists():
+                    pngs = sorted(hist_dir.glob('*.png'))
+                    combined_png = pngs[0] if pngs else combined_png
+
+                if combined_png.exists():
+                    result_holder['combined_png'] = combined_png
+            except Exception as exc:
+                self._append_log_message(f'误差统计失败: {exc}')
 
         combined_png = result_holder.get('combined_png')
         if combined_png is not None:
@@ -2301,6 +2394,7 @@ class VisualTrainFactoryWindow(QMainWindow):
                 self._show_error_histogram(combined_png)
             except Exception as exc:
                 self._append_log_message(f'显示直方图失败: {exc}')
+
 
 
 def main():

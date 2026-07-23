@@ -14,6 +14,47 @@ def find_images(src: Path):
             yield path
 
 
+def collect_images(source_folder: Path, selected_cams=None):
+    """按 denali/相机目录收集图片；selected_cams 为 None 时收集全部。
+
+    目录约定：
+      denali/
+        {ts0}/Cam0  → denali0_cam0
+        {ts0}/Cam1  → denali0_cam1
+        {ts1}/Cam0  → denali1_cam0
+        ...
+    denali 下子目录按名字排序后，第 0 个是 denali0，第 1 个是 denali1。
+    """
+    source_folder = Path(source_folder)
+    if selected_cams is None:
+        return list(find_images(source_folder))
+
+    selected = set(selected_cams)
+    result = []
+
+    for denali_dir in source_folder.rglob('*'):
+        if not denali_dir.is_dir() or denali_dir.name.lower() != 'denali':
+            continue
+
+        # denali 下的时间戳目录：排序后 index 对应 denali0 / denali1
+        instance_dirs = sorted(
+            (p for p in denali_dir.iterdir() if p.is_dir()),
+            key=lambda p: p.name,
+        )
+        for denali_idx, instance_dir in enumerate(instance_dirs):
+            for cam_dir in instance_dir.iterdir():
+                if not cam_dir.is_dir():
+                    continue
+                cam_name = cam_dir.name.lower()  # Cam0 -> cam0
+                if not cam_name.startswith('cam'):
+                    continue
+                key = f'denali{denali_idx}_{cam_name}'  # denali0_cam0
+                if key in selected:
+                    result.extend(find_images(cam_dir))
+
+    return result
+
+
 def chunked(iterable, size):
     chunk = []
     for item in iterable:
@@ -45,17 +86,16 @@ def _normalize_image_to_uint8(img):
     if img.dtype == np.uint8:
         return img
 
-    max_val = img.max()
-    if max_val <= 0:
-        return img.astype(np.uint8)
+    MIN = img.min()
+    MAX = img.max()
 
-    if max_val > 255:
-        return (img / (max_val / 255.0)).astype(np.uint8)
+    img = (img.astype(np.float32) - MIN) / (MAX - MIN) * 255
 
     return img.astype(np.uint8)
 
 
-def make_copy_groups(images, source_folder: Path, out_dir: Path, group_size: int, start_id: int = 0):
+def make_copy_groups(images, source_folder: Path, out_dir: Path, group_size: int, start_id: int = 0,
+                    tiff2png: bool = False):
     out_dir.mkdir(parents=True, exist_ok=True)
     created_groups = 0
 
@@ -69,8 +109,8 @@ def make_copy_groups(images, source_folder: Path, out_dir: Path, group_size: int
             if img is None:
                 print(f'Failed to read image: {path}')
                 continue
-
-            img = _normalize_image_to_uint8(img)
+            if tiff2png:
+                img = _normalize_image_to_uint8(img)
 
             rel_path = path.relative_to(source_folder)
             renamed = '__'.join(rel_path.with_suffix('.png').parts)
@@ -81,7 +121,8 @@ def make_copy_groups(images, source_folder: Path, out_dir: Path, group_size: int
     return created_groups
 
 
-def process_data(source_folder, output_folder, group_size):
+def process_data(source_folder, output_folder, group_size, tiff2png: bool = False,
+                 selected_cams=None, source_mode: str = 'system'):
     source_folder = Path(source_folder).expanduser()
     output_folder = Path(output_folder).expanduser()
 
@@ -93,7 +134,15 @@ def process_data(source_folder, output_folder, group_size):
 
     output_folder.mkdir(parents=True, exist_ok=True)
 
-    images = list(find_images(source_folder))
+    if source_mode == 'system':
+        images = collect_images(source_folder, selected_cams=selected_cams)
+    elif source_mode == 'ui':
+        # TODO: ui 数据源筛选与处理（占位）
+        images = []
+        print(f'ui source_mode is not implemented yet: {source_folder}')
+    else:
+        raise ValueError(f"Unsupported source_mode: {source_mode!r}")
+
     if not images:
         print('No images found in', source_folder)
         return {
@@ -101,6 +150,7 @@ def process_data(source_folder, output_folder, group_size):
             'output_folder': str(output_folder),
             'image_count': 0,
             'group_count': 0,
+            'source_mode': source_mode,
         }
 
     random.shuffle(images)
@@ -108,13 +158,21 @@ def process_data(source_folder, output_folder, group_size):
     print(f'Found {len(images)} images in {source_folder} — grouping every {group_size} images')
 
     start_id = _existing_group_start_id(output_folder)
-    group_count = make_copy_groups(images, source_folder, output_folder, group_size, start_id=start_id)
+    group_count = make_copy_groups(
+        images,
+        source_folder,
+        output_folder,
+        group_size,
+        start_id=start_id,
+        tiff2png=tiff2png,
+    )
 
     return {
         'source_folder': str(source_folder),
         'output_folder': str(output_folder),
         'image_count': len(images),
         'group_count': group_count,
+        'source_mode': source_mode,
     }
 
 if __name__ == '__main__':

@@ -242,6 +242,10 @@ def statistics_result(gtFiles: Sequence[Union[str, Path, None]], predRet, class_
     from math import ceil
     from pathlib import Path
 
+    # Must use non-GUI backend: this may run off the Qt main thread.
+    # QtAgg/interactive backends here can segfault and look like the app "auto-closed".
+    import matplotlib
+    matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     import pandas as pd
 
