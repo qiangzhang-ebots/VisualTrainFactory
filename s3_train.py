@@ -1,5 +1,6 @@
 
 
+import argparse
 import multiprocessing
 import os
 import subprocess
@@ -20,8 +21,19 @@ def _normalize_img_size(img_size):
         if len(img_size) != 2:
             raise ValueError('img_size must be an int or a 2-item sequence')
         return int(img_size[0]), int(img_size[1])
+    if isinstance(img_size, str) and ',' in img_size:
+        parts = [item.strip() for item in img_size.split(',') if item.strip()]
+        if len(parts) != 2:
+            raise ValueError('img_size must be an int or a 2-item sequence')
+        return int(parts[0]), int(parts[1])
     size = int(img_size)
     return size, size
+
+
+def _img_size_to_argv(img_size):
+    if isinstance(img_size, (tuple, list)):
+        return f'{int(img_size[0])},{int(img_size[1])}'
+    return str(img_size)
 
 
 def _get_log_name():
@@ -38,6 +50,15 @@ def _get_gpu_ids(gpu_spec):
     return [item.strip() for item in str(gpu_spec).split(',') if item.strip()]
 
 
+def _parse_hrnet_worker_args(argv=None):
+    parser = argparse.ArgumentParser(description='HRNet distributed training worker')
+    parser.add_argument('--workspace', required=True)
+    parser.add_argument('--epochs', type=int, required=True)
+    parser.add_argument('--batch-size', type=int, required=True)
+    parser.add_argument('--img-size', required=True)
+    parser.add_argument('--gpu', required=True)
+    parser.add_argument('--log-name', required=True)
+    return parser.parse_args(argv)
 
 
 is_torchrun_worker = os.environ.get('HRNET_DIST_LAUNCHED') == '1' and os.environ.get('LOCAL_RANK') is not None
@@ -121,6 +142,7 @@ def trainHRNet(workspace, epochs, batch_size, img_size, gpu, logName):
         env = os.environ.copy()
         env['CUDA_VISIBLE_DEVICES'] = gpu
         env['HRNET_DIST_LAUNCHED'] = '1'
+        env.setdefault('TRAIN_LOGNAME', str(logName))
         env.setdefault('NCCL_DEBUG', 'WARN')
         subprocess.run(
             [
@@ -132,6 +154,18 @@ def trainHRNet(workspace, epochs, batch_size, img_size, gpu, logName):
                 '--master_port',
                 '29501',
                 __file__,
+                '--workspace',
+                str(workspace_path),
+                '--epochs',
+                str(int(epochs)),
+                '--batch-size',
+                str(requested_batch),
+                '--img-size',
+                _img_size_to_argv(img_size),
+                '--gpu',
+                str(gpu),
+                '--log-name',
+                str(logName),
             ],
             check=True,
             env=env,
@@ -376,18 +410,37 @@ def trainHRNet(workspace, epochs, batch_size, img_size, gpu, logName):
 
 
 if __name__ == '__main__':
-
-    workspace = "/home/ebots/Desktop/zhq/VisualFactoryTest/"
-    
     multiprocessing.freeze_support()
 
-    
-    if not is_torchrun_worker:
-        '''
-        trainHRNet中，如果是两块gpu，会开启torch的并行。这个时候，会再跑一次trainYolo
-        为了让trainYolo，只跑一次。这里加了一个判断
-        '''
-        trainYolo(workspace, labelName = {0: '0', 1: '1'}, epochs=100, batch_size=16, img_size=640, gpu='0,1', logName=_get_log_name(), weights=None)
-
-
-    trainHRNet(workspace, epochs=100, batch_size=16, img_size=640, gpu='0,1', logName=_get_log_name())
+    if is_torchrun_worker:
+        # 多卡 worker：从 argv 读取 trainHRNet 传入的真实参数
+        args = _parse_hrnet_worker_args()
+        trainHRNet(
+            workspace=args.workspace,
+            epochs=args.epochs,
+            batch_size=args.batch_size,
+            img_size=args.img_size,
+            gpu=args.gpu,
+            logName=args.log_name,
+        )
+    else:
+        # 本地直接跑脚本时的调试入口
+        workspace = "/home/ebots/Desktop/zhq/VisualFactoryTest/"
+        trainYolo(
+            workspace,
+            labelName={0: '0', 1: '1'},
+            epochs=100,
+            batch_size=16,
+            img_size=640,
+            gpu='0,1',
+            logName=_get_log_name(),
+            weights=None,
+        )
+        trainHRNet(
+            workspace,
+            epochs=100,
+            batch_size=16,
+            img_size=640,
+            gpu='0,1',
+            logName=_get_log_name(),
+        )
