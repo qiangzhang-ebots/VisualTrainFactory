@@ -14,8 +14,8 @@ def find_images(src: Path):
             yield path
 
 
-def collect_images(source_folder: Path, selected_cams=None):
-    """按 denali/相机目录收集图片；selected_cams 为 None 时收集全部。
+def _collect_images_system(source_folder: Path, selected_cams):
+    """system：按 denali/相机目录收集图片。
 
     目录约定：
       denali/
@@ -25,9 +25,8 @@ def collect_images(source_folder: Path, selected_cams=None):
         ...
     denali 下子目录按名字排序后，第 0 个是 denali0，第 1 个是 denali1。
     """
-    source_folder = Path(source_folder)
-    if selected_cams is None:
-        return list(find_images(source_folder))
+    if not selected_cams:
+        return []
 
     selected = set(selected_cams)
     result = []
@@ -53,6 +52,35 @@ def collect_images(source_folder: Path, selected_cams=None):
                     result.extend(find_images(cam_dir))
 
     return result
+
+
+def _collect_images_unknow(source_folder: Path):
+    """unknow：不区分来源，收集目录下全部图片。"""
+    return list(find_images(source_folder))
+
+
+def _collect_images_ui(source_folder: Path, selected_cams=None):
+    """ui：数据源筛选与处理（占位）。"""
+    print(f'ui source_mode is not implemented yet: {source_folder}')
+    return []
+
+
+def collect_images(source_folder: Path, source_mode: str = 'system', selected_cams=None):
+    """按数据来源收集图片。
+
+    source_mode:
+      - system: 按 denali/相机目录筛选（依赖 selected_cams）
+      - unknow: 全部图片混在一起
+      - ui: 预留扩展
+    """
+    source_folder = Path(source_folder)
+    if source_mode == 'system':
+        return _collect_images_system(source_folder, selected_cams)
+    if source_mode == 'unknow':
+        return _collect_images_unknow(source_folder)
+    if source_mode == 'ui':
+        return _collect_images_ui(source_folder, selected_cams=selected_cams)
+    raise ValueError(f"Unsupported source_mode: {source_mode!r}")
 
 
 def chunked(iterable, size):
@@ -134,14 +162,11 @@ def process_data(source_folder, output_folder, group_size, tiff2png: bool = Fals
 
     output_folder.mkdir(parents=True, exist_ok=True)
 
-    if source_mode == 'system':
-        images = collect_images(source_folder, selected_cams=selected_cams)
-    elif source_mode == 'ui':
-        # TODO: ui 数据源筛选与处理（占位）
-        images = []
-        print(f'ui source_mode is not implemented yet: {source_folder}')
-    else:
-        raise ValueError(f"Unsupported source_mode: {source_mode!r}")
+    images = collect_images(
+        source_folder,
+        source_mode=source_mode,
+        selected_cams=selected_cams,
+    )
 
     if not images:
         print('No images found in', source_folder)

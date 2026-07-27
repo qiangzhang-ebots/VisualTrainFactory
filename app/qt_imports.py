@@ -25,6 +25,7 @@ from PyQt5.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QMainWindow,
+    QRadioButton,
     QScrollArea,
     QSpinBox,
     QTableWidget,

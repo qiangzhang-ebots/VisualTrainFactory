@@ -2,6 +2,7 @@
 from pathlib import Path
 
 import cv2
+import numpy as np
 
 
 IMAGE_SUFFIXES = ('.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff')
@@ -44,23 +45,30 @@ def load_yolo_labels(label_path):
                 continue
 
             try:
-                cls, x, y, w, h = map(float, parts[:5])
+                values = list(map(float, parts))
             except ValueError:
                 continue
 
-            raw_kps = []
-            if len(parts) > 5:
-                for value in parts[5:]:
-                    try:
-                        raw_kps.append(float(value))
-                    except ValueError:
-                        raw_kps.append(0.0)
+            # YOLO OBB: class x1 y1 x2 y2 x3 y3 x4 y4
+            if len(values) == 9:
+                cls = int(values[0])
+                corners = [
+                    (values[1], values[2]),
+                    (values[3], values[4]),
+                    (values[5], values[6]),
+                    (values[7], values[8]),
+                ]
+                labels.append(('obb', cls, corners))
+                continue
+
+            cls, x, y, w, h = values[:5]
+            raw_kps = values[5:]
 
             keypoints = []
             for i in range(0, len(raw_kps) - 2, 3):
                 keypoints.append([raw_kps[i], raw_kps[i + 1]])
 
-            labels.append((int(cls), x, y, w, h, keypoints))
+            labels.append(('xywh', int(cls), x, y, w, h, keypoints))
 
     return labels
 
@@ -68,17 +76,39 @@ def load_yolo_labels(label_path):
 def draw_yolo_boxes(img, labels, color=(0, 255, 0), label_mapping_rows=None):
     h, w = img.shape[:2]
     for label in labels:
-        if len(label) == 6:
+        # Backward compatible with old 6-tuple format: (cls, x, y, w, h, keypoints)
+        if len(label) == 6 and not isinstance(label[0], str):
             cls, x, y, bw, bh, keypoints = label
+        elif label[0] == 'obb':
+            _, cls, corners = label
+            display_text = _get_box_display_text(cls, label_mapping_rows)
+            pts = np.array(
+                [[int(px * w), int(py * h)] for px, py in corners],
+                dtype=np.int32,
+            )
+            cv2.polylines(img, [pts], isClosed=True, color=color, thickness=1)
+            text_x = int(min(pt[0] for pt in pts))
+            text_y = int(min(pt[1] for pt in pts))
+            cv2.putText(
+                img,
+                display_text,
+                (text_x, max(0, text_y - 5)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                color,
+                1,
+            )
+            continue
+        elif label[0] == 'xywh':
+            _, cls, x, y, bw, bh, keypoints = label
         else:
-            cls, x, y, bw, bh = label
-            keypoints = []
+            continue
 
+        display_text = _get_box_display_text(cls, label_mapping_rows)
         cx, cy, bw, bh = x * w, y * h, bw * w, bh * h
         x1, y1 = int(cx - bw / 2), int(cy - bh / 2)
         x2, y2 = int(cx + bw / 2), int(cy + bh / 2)
         cv2.rectangle(img, (x1, y1), (x2, y2), color, 1)
-        display_text = _get_box_display_text(cls, label_mapping_rows)
         cv2.putText(img, display_text, (x1, max(0, y1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 1)
 
         if keypoints:
@@ -123,4 +153,3 @@ def visual_HRNet_trainData(path):
 
 if __name__ == '__main__':
     pass
-

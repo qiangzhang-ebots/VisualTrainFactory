@@ -29,6 +29,7 @@ from app.qt_imports import (
     QDoubleSpinBox,
     QLineEdit,
     QMainWindow,
+    QRadioButton,
     QSpinBox,
     QWidget,
     QEvent,
@@ -164,6 +165,13 @@ class VisualTrainFactoryWindow(QMainWindow):
         self.train_data_visualization_controller.on_folder_tree_changed(selected, deselected)
         self.inference_controller.on_folder_tree_changed(selected, deselected)
 
+    def _on_model_task_changed(self, checked=False):
+        if not checked:
+            return
+        self.train_controller.sync_task_ui()
+        self.inference_controller.sync_task_ui()
+
+
     def _on_main_tab_changed(self, index):
         tab_widget = getattr(self, "tabWidgetMain", None)
         if tab_widget is None:
@@ -174,6 +182,8 @@ class VisualTrainFactoryWindow(QMainWindow):
             self.label_data_preview_controller.on_enter()
         elif current_widget is self.tabVisualTrain:
             self.train_data_visualization_controller.on_enter()
+        elif current_widget is self.tabTrain:
+            self.train_controller.on_enter()
         elif current_widget is self.tabInference:
             self.inference_controller.on_enter()
 
@@ -187,8 +197,15 @@ class VisualTrainFactoryWindow(QMainWindow):
         self.btnNextImage.clicked.connect(self.train_data_visualization_controller.show_next_image)
         self.tabWidgetMain.currentChanged.connect(self._on_main_tab_changed)
 
+        for radio_name in ("radioTaskKeypoint", "radioTaskObb"):
+            radio = getattr(self, radio_name, None)
+            if radio is not None:
+                radio.toggled.connect(self._on_model_task_changed)
+
         self.btnTrainYolo.clicked.connect(self.train_controller.run_yolo_train)
         self.btnTrainHrnet.clicked.connect(self.train_controller.run_hrnet_train)
+        self.train_controller.sync_task_ui()
+        self.inference_controller.sync_task_ui()
         self.btnExportYoloOnnx.clicked.connect(self.inference_controller.export_yolo_onnx)
         self.btnExportHrnetOnnx.clicked.connect(self.inference_controller.export_hrnet_onnx)
         self.btnBatchInfer.clicked.connect(self.inference_controller.run_batch_inference)
@@ -296,6 +313,11 @@ class VisualTrainFactoryWindow(QMainWindow):
                     }
                 elif isinstance(widget, QCheckBox):
                     widget_state[widget_name] = {"kind": "QCheckBox", "checked": bool(widget.isChecked())}
+                elif isinstance(widget, QRadioButton):
+                    widget_state[widget_name] = {
+                        "kind": "QRadioButton",
+                        "checked": bool(widget.isChecked()),
+                    }
             except Exception:
                 continue
 
@@ -381,6 +403,13 @@ class VisualTrainFactoryWindow(QMainWindow):
                     widget.blockSignals(True)
                     widget.setChecked(bool(state.get("checked", False)))
                     widget.blockSignals(False)
+                elif isinstance(widget, QRadioButton):
+                    # Only force-check the saved selection; exclusive groups
+                    # will auto-uncheck the other radios.
+                    if bool(state.get("checked", False)):
+                        widget.blockSignals(True)
+                        widget.setChecked(True)
+                        widget.blockSignals(False)
             except Exception:
                 continue
 

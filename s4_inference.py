@@ -105,6 +105,37 @@ def draw_results(image: Union[str, Path, np.ndarray], ret: Sequence[Any], class_
         return vis_img
 
     result = ret[0]
+    mapping = class_names or {}
+
+    obb_obj = getattr(result, 'obb', None)
+    if obb_obj is not None and len(obb_obj) > 0:
+        corners = _to_numpy(obb_obj.xyxyxyxy)
+        if corners.ndim == 2 and corners.shape[1] == 8:
+            corners = corners.reshape(-1, 4, 2)
+        boxes_conf = _to_numpy(obb_obj.conf) if hasattr(obb_obj, 'conf') else None
+        boxes_cls = _to_numpy(obb_obj.cls) if hasattr(obb_obj, 'cls') else None
+        for obj_idx, pts in enumerate(corners):
+            if boxes_conf is not None and obj_idx < len(boxes_conf) and float(boxes_conf[obj_idx]) < BOX_SCORE_THR:
+                continue
+            class_id = int(boxes_cls[obj_idx]) if boxes_cls is not None and obj_idx < len(boxes_cls) else -1
+            label_name = mapping.get(class_id, str(class_id))
+            poly = np.asarray(pts, dtype=np.int32).reshape((-1, 1, 2))
+            cv2.polylines(vis_img, [poly], isClosed=True, color=(0, 255, 0), thickness=1)
+            text_x = int(np.min(pts[:, 0]))
+            text_y = int(np.min(pts[:, 1]))
+            box_text = label_name
+            if boxes_conf is not None and obj_idx < len(boxes_conf):
+                box_text = f'{label_name} {float(boxes_conf[obj_idx]):.2f}'
+            cv2.putText(vis_img, box_text, (text_x, max(0, text_y - 10)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            for kp_idx, (x, y) in enumerate(pts):
+                color = (0, 0, 255)
+                if kp_idx == 0:
+                    color = (255, 0, 0)
+                elif kp_idx == 1:
+                    color = (0, 255, 255)
+                cv2.circle(vis_img, (int(x), int(y)), 3, color, -1)
+        return vis_img
+
     boxes_obj = getattr(result, 'boxes', None)
     keypoints_obj = getattr(result, 'keypoints', None)
     if boxes_obj is None or keypoints_obj is None:
@@ -120,7 +151,6 @@ def draw_results(image: Union[str, Path, np.ndarray], ret: Sequence[Any], class_
     except Exception:
         keypoint_scores = keypoints_data[:, :, 2] if keypoints_data.ndim == 3 and keypoints_data.shape[-1] >= 3 else None
 
-    mapping = class_names or {}
     for obj_idx, keypoints in enumerate(keypoints_data):
         if boxes_conf is not None and obj_idx < len(boxes_conf) and float(boxes_conf[obj_idx]) < BOX_SCORE_THR:
             continue
@@ -207,17 +237,17 @@ def save_result(image: Union[str, Path, np.ndarray, None], imgName: str, ret: Se
 
     if ret:
         result = ret[0]
-        boxes_obj = getattr(result, 'boxes', None)
-        keypoints_obj = getattr(result, 'keypoints', None)
-        if boxes_obj is not None and keypoints_obj is not None:
-            boxes_conf = _to_numpy(boxes_obj.conf) if hasattr(boxes_obj, 'conf') else None
-            boxes_cls = _to_numpy(boxes_obj.cls) if hasattr(boxes_obj, 'cls') else None
-            keypoints_data = _to_numpy(keypoints_obj.data)
+        mapping = class_names or {}
+        part_set = set(part_labels) if part_labels is not None else None
 
-            mapping = class_names or {}
-            # part_labels 是一个可选的 int 集合，若提供则只保存这些 class_id 的条目
-            part_set = set(part_labels) if part_labels is not None else None
-            for obj_idx in range(keypoints_data.shape[0]):
+        obb_obj = getattr(result, 'obb', None)
+        if obb_obj is not None and len(obb_obj) > 0:
+            boxes_conf = _to_numpy(obb_obj.conf) if hasattr(obb_obj, 'conf') else None
+            boxes_cls = _to_numpy(obb_obj.cls) if hasattr(obb_obj, 'cls') else None
+            corners = _to_numpy(obb_obj.xyxyxyxy)
+            if corners.ndim == 2 and corners.shape[1] == 8:
+                corners = corners.reshape(-1, 4, 2)
+            for obj_idx in range(corners.shape[0]):
                 if boxes_conf is not None and obj_idx < len(boxes_conf) and float(boxes_conf[obj_idx]) < BOX_SCORE_THR:
                     continue
                 class_id = int(boxes_cls[obj_idx]) if boxes_cls is not None and obj_idx < len(boxes_cls) else -1
@@ -225,14 +255,37 @@ def save_result(image: Union[str, Path, np.ndarray, None], imgName: str, ret: Se
                     continue
                 if class_id not in mapping:
                     continue
-
                 json_data['shapes'].append({
                     'label': mapping[class_id],
-                    'points': [[float(x), float(y)] for x, y, *_ in keypoints_data[obj_idx]],
+                    'points': [[float(x), float(y)] for x, y in corners[obj_idx]],
                     'group_id': None,
                     'shape_type': 'polygon',
                     'flags': {},
                 })
+        else:
+            boxes_obj = getattr(result, 'boxes', None)
+            keypoints_obj = getattr(result, 'keypoints', None)
+            if boxes_obj is not None and keypoints_obj is not None:
+                boxes_conf = _to_numpy(boxes_obj.conf) if hasattr(boxes_obj, 'conf') else None
+                boxes_cls = _to_numpy(boxes_obj.cls) if hasattr(boxes_obj, 'cls') else None
+                keypoints_data = _to_numpy(keypoints_obj.data)
+
+                for obj_idx in range(keypoints_data.shape[0]):
+                    if boxes_conf is not None and obj_idx < len(boxes_conf) and float(boxes_conf[obj_idx]) < BOX_SCORE_THR:
+                        continue
+                    class_id = int(boxes_cls[obj_idx]) if boxes_cls is not None and obj_idx < len(boxes_cls) else -1
+                    if part_set is not None and class_id not in part_set:
+                        continue
+                    if class_id not in mapping:
+                        continue
+
+                    json_data['shapes'].append({
+                        'label': mapping[class_id],
+                        'points': [[float(x), float(y)] for x, y, *_ in keypoints_data[obj_idx]],
+                        'group_id': None,
+                        'shape_type': 'polygon',
+                        'flags': {},
+                    })
 
     with save_path.open('w', encoding='utf-8') as f:
         json.dump(json_data, f, ensure_ascii=False, indent=2)
@@ -308,6 +361,31 @@ def statistics_result(gtFiles: Sequence[Union[str, Path, None]], predRet, class_
         union = area1 + area2 - inter_area
         return (inter_area / union) if union > 0 else 0.0
 
+    def _align_corner_distances(gt_pts, pred_pts):
+        gt = np.asarray(gt_pts, dtype=np.float32)
+        pred = np.asarray(pred_pts, dtype=np.float32)
+        if gt.size == 0 or pred.size == 0:
+            return []
+        if gt.ndim != 2 or pred.ndim != 2 or gt.shape[1] != 2 or pred.shape[1] != 2:
+            n = min(len(gt), len(pred))
+            return [float(np.linalg.norm(gt[i] - pred[i])) for i in range(n)]
+        if len(gt) != 4 or len(pred) != 4:
+            n = min(len(gt), len(pred))
+            return [float(np.linalg.norm(gt[i] - pred[i])) for i in range(n)]
+
+        best_dists = None
+        best_mean = float('inf')
+        for reverse in (False, True):
+            ordered = pred[::-1] if reverse else pred
+            for shift in range(4):
+                shifted = np.roll(ordered, shift, axis=0)
+                dists = [float(np.linalg.norm(gt[i] - shifted[i])) for i in range(4)]
+                mean_val = float(np.mean(dists))
+                if mean_val < best_mean:
+                    best_mean = mean_val
+                    best_dists = dists
+        return best_dists or []
+
     def _parse_gt_objects(gt_item, img_h, img_w):
         gt_content = _load_gt_content(gt_item)
         gt_objects = []
@@ -339,6 +417,26 @@ def statistics_result(gtFiles: Sequence[Union[str, Path, None]], predRet, class_
             if len(values) < 4:
                 continue
 
+            # YOLO OBB: class + 8 normalized corner coords
+            if len(values) == 8:
+                corners = [
+                    [values[0] * img_w, values[1] * img_h],
+                    [values[2] * img_w, values[3] * img_h],
+                    [values[4] * img_w, values[5] * img_h],
+                    [values[6] * img_w, values[7] * img_h],
+                ]
+                xs = [pt[0] for pt in corners]
+                ys = [pt[1] for pt in corners]
+                gt_objects.append({
+                    'class_id': class_id,
+                    'class_name': class_id_to_name.get(class_id, str(class_id)),
+                    'box': np.array([min(xs), min(ys), max(xs), max(ys)], dtype=np.float32),
+                    'keypoints': np.asarray(corners, dtype=np.float32),
+                    'keypoint_scores': np.ones(4, dtype=np.int32),
+                    'is_obb': True,
+                })
+                continue
+
             cx, cy, bw, bh = values[:4]
             kp_values = values[4:]
             keypoints = []
@@ -359,6 +457,7 @@ def statistics_result(gtFiles: Sequence[Union[str, Path, None]], predRet, class_
                 'box': np.array([x1, y1, x2, y2], dtype=np.float32),
                 'keypoints': np.asarray(keypoints, dtype=np.float32),
                 'keypoint_scores': np.asarray(keypoint_scores, dtype=np.int32),
+                'is_obb': False,
             })
         return gt_objects
 
@@ -366,6 +465,41 @@ def statistics_result(gtFiles: Sequence[Union[str, Path, None]], predRet, class_
         result_item = _get_result_item(pred_item)
         if result_item is None:
             return None, [], None
+
+        obb_obj = getattr(result_item, 'obb', None)
+        if obb_obj is not None and len(obb_obj) > 0:
+            boxes_conf = _to_numpy(obb_obj.conf) if hasattr(obb_obj, 'conf') else None
+            boxes_cls = _to_numpy(obb_obj.cls) if hasattr(obb_obj, 'cls') else None
+            corners = _to_numpy(obb_obj.xyxyxyxy)
+            if corners.ndim == 2 and corners.shape[1] == 8:
+                corners = corners.reshape(-1, 4, 2)
+            boxes_xyxy = _to_numpy(obb_obj.xyxy) if hasattr(obb_obj, 'xyxy') else None
+
+            pred_objects = []
+            for obj_idx in range(corners.shape[0]):
+                if boxes_conf is not None and obj_idx < len(boxes_conf) and float(boxes_conf[obj_idx]) < BOX_SCORE_THR:
+                    continue
+
+                class_id = int(boxes_cls[obj_idx]) if boxes_cls is not None and obj_idx < len(boxes_cls) else -1
+                class_name = class_id_to_name.get(class_id, str(class_id))
+                if boxes_xyxy is not None and obj_idx < len(boxes_xyxy):
+                    pred_box = boxes_xyxy[obj_idx]
+                else:
+                    xs = corners[obj_idx, :, 0]
+                    ys = corners[obj_idx, :, 1]
+                    pred_box = np.array([np.min(xs), np.min(ys), np.max(xs), np.max(ys)], dtype=np.float32)
+
+                pred_objects.append({
+                    'index': obj_idx,
+                    'class_id': class_id,
+                    'class_name': class_name,
+                    'box': pred_box,
+                    'keypoints': corners[obj_idx],
+                    'box_conf': float(boxes_conf[obj_idx]) if boxes_conf is not None and obj_idx < len(boxes_conf) else 1.0,
+                    'kp_conf': None,
+                    'is_obb': True,
+                })
+            return result_item, pred_objects, None
 
         boxes_obj = getattr(result_item, 'boxes', None)
         keypoints_obj = getattr(result_item, 'keypoints', None)
@@ -401,6 +535,7 @@ def statistics_result(gtFiles: Sequence[Union[str, Path, None]], predRet, class_
                 'keypoints': keypoints_data[obj_idx, :, :2],
                 'box_conf': float(boxes_conf[obj_idx]) if boxes_conf is not None and obj_idx < len(boxes_conf) else 1.0,
                 'kp_conf': keypoint_scores[obj_idx] if keypoint_scores is not None and len(keypoint_scores) > obj_idx else None,
+                'is_obb': False,
             })
 
         return result_item, pred_objects, keypoint_scores
@@ -487,6 +622,19 @@ def statistics_result(gtFiles: Sequence[Union[str, Path, None]], predRet, class_
             gt_points = gt_obj['keypoints']
             pred_points = np.asarray(best_pred['keypoints'], dtype=np.float32)
             if gt_points.size == 0 or pred_points.size == 0:
+                continue
+
+            if gt_obj.get('is_obb') or best_pred.get('is_obb'):
+                valid_dists = _align_corner_distances(gt_points, pred_points)
+                for kp_idx, dist in enumerate(valid_dists):
+                    per_image_class_dists[class_name].append(dist)
+                    all_dist_by_class[class_name].append(dist)
+                    dist_counts_by_class.setdefault(class_name, {}).setdefault(kp_idx + 1, []).append(dist)
+                if valid_dists:
+                    img_max_dist = max(valid_dists)
+                    if img_max_dist > max_error:
+                        max_error = img_max_dist
+                        max_error_img = str(gt_item) if isinstance(gt_item, (str, Path)) else str(idx)
                 continue
 
             if gt_obj['class_id'] != line_class_id and len(gt_points) != len(pred_points):

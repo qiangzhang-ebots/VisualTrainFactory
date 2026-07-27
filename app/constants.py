@@ -27,4 +27,5 @@ class Split(str, Enum):
 
 class ModelKind(str, Enum):
     YOLO = "pose"
+    OBB = "obb"
     HRNET = "HRNet"

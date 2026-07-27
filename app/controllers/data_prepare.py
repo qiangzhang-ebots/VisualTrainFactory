@@ -23,12 +23,15 @@ class DataPrepareController(TabController):
 
         radio_system = getattr(self.window, "radioSystem", None)
         radio_ui = getattr(self.window, "radioUi", None)
+        radio_unknow = getattr(self.window, "radioUnknow", None)
         if radio_system is not None and radio_system.isChecked():
             source_mode = "system"
         elif radio_ui is not None and radio_ui.isChecked():
             source_mode = "ui"
+        elif radio_unknow is not None and radio_unknow.isChecked():
+            source_mode = "unknow"
         else:
-            self.append_log("请选择数据源类型：system 或 ui。")
+            self.append_log("请选择数据源类型：system、ui 或 unknow。")
             return
 
         cam_checkbox_map = {
@@ -41,7 +44,7 @@ class DataPrepareController(TabController):
             key for key, checkbox in cam_checkbox_map.items()
             if checkbox is not None and checkbox.isChecked()
         }
-        if not selected_cams:
+        if source_mode == "system" and not selected_cams:
             self.append_log("请至少勾选一个相机（denali*_cam*）。")
             return
 
@@ -49,10 +52,13 @@ class DataPrepareController(TabController):
         work_dir_path = Path(work_dir_text)
         output_folder = work_dir_path / "group_data"
         group_size = self.window.spinBoxGroupSize.value()
-        if source_mode == "system":
-            total_file_count = len(collect_images(source_folder, selected_cams=selected_cams))
-        else:
-            total_file_count = len(collect_images(source_folder, selected_cams=None))
+        total_file_count = len(
+            collect_images(
+                source_folder,
+                source_mode=source_mode,
+                selected_cams=selected_cams,
+            )
+        )
 
         result_holder = {"result": None, "error": None}
 

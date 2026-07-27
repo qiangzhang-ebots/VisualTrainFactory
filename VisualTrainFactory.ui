@@ -286,6 +286,30 @@ QStatusBar {
          </property>
         </spacer>
        </item>
+       <item>
+        <widget class="QLabel" name="labelModelTask">
+         <property name="text">
+          <string>模型任务</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QRadioButton" name="radioTaskKeypoint">
+         <property name="text">
+          <string>关键点识别</string>
+         </property>
+         <property name="checked">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QRadioButton" name="radioTaskObb">
+         <property name="text">
+          <string>obb</string>
+         </property>
+        </widget>
+       </item>
       </layout>
      </widget>
     </item>
@@ -404,7 +428,17 @@ QStatusBar {
             <item>
              <layout class="QHBoxLayout" name="horizontalLayout_dataSourceType">
               <item>
+               <widget class="QLabel" name="labelDataSource">
+                <property name="text">
+                 <string>数据来源</string>
+                </property>
+               </widget>
+              </item>
+              <item>
                <widget class="QRadioButton" name="radioSystem">
+                <property name="toolTip">
+                 <string>由现有系统采集，根据时间区分denali0，denali1</string>
+                </property>
                 <property name="text">
                  <string>system</string>
                 </property>
@@ -417,6 +451,16 @@ QStatusBar {
                <widget class="QRadioButton" name="radioUi">
                 <property name="text">
                  <string>ui</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QRadioButton" name="radioUnknow">
+                <property name="toolTip">
+                 <string>不知道数据来源，只能所有图片混在一起分</string>
+                </property>
+                <property name="text">
+                 <string>unknow</string>
                 </property>
                </widget>
               </item>

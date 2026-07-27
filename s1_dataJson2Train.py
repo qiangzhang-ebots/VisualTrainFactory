@@ -307,6 +307,79 @@ def labelme2yolo(json_file, txt_file, img_w, img_h, convert_info):
 		file.write('\n'.join(lines))
 
 
+def build_yolo_obb_line(label, points, img_w, img_h):
+	parts = [f'{label}']
+	for x, y in points:
+		parts.append(f'{float(x) / img_w:.6f}')
+		parts.append(f'{float(y) / img_h:.6f}')
+	return ' '.join(parts)
+
+
+def _rectangle_to_quad_points(points):
+	left, top, right, bottom = _normalize_rect(points)
+	return [
+		(left, top),
+		(right, top),
+		(right, bottom),
+		(left, bottom),
+	]
+
+
+def shape_to_yolo_obb_line(shape, json_file, img_w, img_h, convert_info):
+	label_text = str(shape.get('label', ''))
+	label = _resolve_category_id(label_text, convert_info)
+	shape_type = shape.get('shape_type', '')
+	points = shape.get('points', [])
+
+	if shape_type == 'polygon':
+		if len(points) != 4:
+			raise RuntimeError(f'OBB polygon 必须包含4个点: {json_file} 中的 shape {shape}')
+		quad = [(float(x), float(y)) for x, y in points]
+	elif shape_type == 'rectangle':
+		if len(points) != 2:
+			raise RuntimeError(f'OBB rectangle 必须包含2个点: {json_file} 中的 shape {shape}')
+		quad = _rectangle_to_quad_points(points)
+	else:
+		raise RuntimeError(f'OBB 仅支持 polygon/rectangle: {json_file} 中的 shape {shape}')
+
+	return build_yolo_obb_line(label, quad, img_w, img_h)
+
+
+def labelme2yolo_obb(json_file, txt_file, img_w, img_h, convert_info):
+	with open(json_file, 'r', encoding='utf-8') as file:
+		data = json.load(file)
+
+	lines = []
+	shapes = data.get('shapes', [])
+	occupied_labels = _get_occupied_labels(convert_info)
+	label_map = _normalize_label_map(convert_info.Label2Int)
+
+	for shape in shapes:
+		label_text = str(shape.get('label', ''))
+		shape_type = shape.get('shape_type', '')
+		if label_text in occupied_labels and shape_type == 'rectangle':
+			continue
+
+		if label_text not in label_map:
+			continue
+
+		if shape_type == 'polygon':
+			points = shape.get('points', [])
+			if len(points) != 4:
+				continue
+		elif shape_type == 'rectangle':
+			points = shape.get('points', [])
+			if len(points) != 2:
+				continue
+		else:
+			continue
+
+		lines.append(shape_to_yolo_obb_line(shape, json_file, img_w, img_h, convert_info))
+
+	with open(txt_file, 'w', encoding='utf-8') as file:
+		file.write('\n'.join(lines))
+
+
 def _build_coco_categories(convert_info, files, occupied_labels):
 	label_map = _normalize_label_map(convert_info.Label2Int)
 	if label_map:
@@ -334,7 +407,7 @@ def _build_coco_categories(convert_info, files, occupied_labels):
 	return [{'id': label_id, 'name': str(label_id), 'supercategory': 'shape'} for label_id in sorted(label_ids)]
 
 
-def process_filesYolo(convert_info: ConvertInfo):
+def _process_files_yolo(convert_info: ConvertInfo, label_converter):
 	json_root = _resolve_path(convert_info.JsonPath)
 	datasets_dir = _resolve_path(convert_info.DatasetsDir)
 	if not json_root.exists():
@@ -358,15 +431,23 @@ def process_filesYolo(convert_info: ConvertInfo):
 				data = json.load(file)
 
 			image_file, image_suffix = _find_image_file(json_root, json_name, data)
-			dst_name = rel_json.stem+image_suffix
+			dst_name = rel_json.stem + image_suffix
 			dst_img = datasets_dir / 'images' / split_name / dst_name
 			shutil.copy(image_file, dst_img)
 
 			img_w, img_h = _get_image_size(image_file)
 			dst_txt = datasets_dir / 'labels' / split_name / f'{rel_json.stem}.txt'
-			labelme2yolo(json_file, dst_txt, img_w, img_h, convert_info)
+			label_converter(json_file, dst_txt, img_w, img_h, convert_info)
 
 	return train_files, val_files, test_files
+
+
+def process_filesYoloFeaturePoint(convert_info: ConvertInfo):
+	return _process_files_yolo(convert_info, labelme2yolo)
+
+
+def process_filesYoloObb(convert_info: ConvertInfo):
+	return _process_files_yolo(convert_info, labelme2yolo_obb)
 
 
 def _shape_to_coco_annotation(shape, json_file, image_id, annotation_id, image_width, image_height, convert_info, occupied_rects):
@@ -490,7 +571,8 @@ if __name__ == '__main__':
 	convert_info.DatasetsDir = workspace + 'datasets'
 
 	try:
-		# process_filesYolo(convert_info)
+		# process_filesYoloFeaturePoint(convert_info)
+		# process_filesYoloObb(convert_info)
 		process_filesHRNet(convert_info)
 	except FileNotFoundError as exc:
 		print(exc)

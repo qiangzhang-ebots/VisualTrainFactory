@@ -55,6 +55,18 @@ class InferenceController(TabController):
         self.save_part_label_list = list_widget
 
     def on_enter(self):
+        self.sync_task_ui()
+
+    def _is_obb_task(self) -> bool:
+        radio_obb = getattr(self.window, "radioTaskObb", None)
+        return bool(radio_obb is not None and radio_obb.isChecked())
+
+    def sync_task_ui(self):
+        is_obb = self._is_obb_task()
+        for widget_name in ("labelHrnetModel", "comboBoxHrnetModel", "btnExportHrnetOnnx"):
+            widget = getattr(self.window, widget_name, None)
+            if widget is not None:
+                widget.setEnabled(not is_obb)
         self.refresh_model_lists()
 
     def on_folder_tree_changed(self, selected, deselected):
@@ -88,6 +100,10 @@ class InferenceController(TabController):
 
     def export_hrnet_onnx(self):
         try:
+            if self._is_obb_task():
+                self.append_log("当前任务为 OBB，HRNet 不可用。")
+                return
+
             from s5_exportOnnx import exportHRNetOnnx
 
             if self.get_workspace() is None:
@@ -109,6 +125,7 @@ class InferenceController(TabController):
         workspace = self.get_workspace()
         yolo_combo = getattr(self.window, "comboBoxYoloModel", None)
         hrnet_combo = getattr(self.window, "comboBoxHrnetModel", None)
+        is_obb = self._is_obb_task()
 
         try:
             if yolo_combo is not None:
@@ -121,8 +138,13 @@ class InferenceController(TabController):
         if workspace is None:
             return
 
-        self._fill_model_combo(yolo_combo, workspace.model_runs(ModelKind.YOLO), include_none=False)
-        self._fill_model_combo(hrnet_combo, workspace.model_runs(ModelKind.HRNET), include_none=True)
+        yolo_kind = ModelKind.OBB if is_obb else ModelKind.YOLO
+        self._fill_model_combo(yolo_combo, workspace.model_runs(yolo_kind), include_none=False)
+        if is_obb:
+            if hrnet_combo is not None:
+                hrnet_combo.addItem("None", "")
+        else:
+            self._fill_model_combo(hrnet_combo, workspace.model_runs(ModelKind.HRNET), include_none=True)
 
     @staticmethod
     def _fill_model_combo(combo_box, root_path: Path, include_none: bool):
@@ -258,9 +280,11 @@ class InferenceController(TabController):
 
         yolo_model_path = read_combo_data(self.window, "comboBoxYoloModel")
         hrnet_model_path = read_combo_data(self.window, "comboBoxHrnetModel")
+        use_obb = self._is_obb_task()
 
         if not yolo_model_path:
-            self.append_log("请在推理页选择一个 YOLO 模型（runs/pose 下的子目录）。")
+            runs_dir = "runs/obb" if use_obb else "runs/pose"
+            self.append_log(f"请在推理页选择一个 YOLO 模型（{runs_dir} 下的子目录）。")
             return
 
         ret_folder_text = read_text(self.window, "batchInferRetFolderLineEdit")
@@ -287,14 +311,18 @@ class InferenceController(TabController):
 
         def _run_batch():
             try:
-                self.append_log(f"加载 YOLO 模型: {yolo_model_path}")
-                model.load_yolo_model(str(yolo_model_path + "/weights/best.pt"))
-                if hrnet_model_path:
+                weights_path = str(Path(yolo_model_path) / "weights" / "best.pt")
+                task_name = "YOLO OBB" if use_obb else "YOLO"
+                self.append_log(f"加载 {task_name} 模型: {weights_path}")
+                model.load_yolo_model(weights_path)
+                if (not use_obb) and hrnet_model_path:
                     try:
                         self.append_log(f"加载 HRNet 模型: {hrnet_model_path}")
                         model.load_hrnet_model(str(hrnet_model_path))
                     except Exception as exc:
                         self.append_log(f"加载 HRNet 失败，继续仅使用 YOLO: {exc}")
+                elif use_obb:
+                    self.append_log("OBB 任务跳过 HRNet。")
 
                 images = [
                     path
@@ -306,7 +334,7 @@ class InferenceController(TabController):
                     self.append_log(f"未在 {infer_folder} 找到图片。")
                     return
 
-                self.append_log(f"开始对 {total} 张图片进行推理...")
+                self.append_log(f"开始对 {total} 张图片进行{task_name}推理...")
                 gt_files = []
                 pred_ret = []
 
