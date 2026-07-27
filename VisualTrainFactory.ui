@@ -292,14 +292,14 @@ QStatusBar {
     <item>
      <layout class="QHBoxLayout" name="horizontalLayout">
       <item>
-       <widget class="QPushButton" name="selectWorkDirectoryBtn">
+       <widget class="QPushButton" name="btnSelectWorkDirectory">
         <property name="text">
          <string>打开工作目录</string>
         </property>
        </widget>
       </item>
       <item>
-       <widget class="QComboBox" name="workDirectoryLineEdit">
+       <widget class="QComboBox" name="comboBoxWorkDirectory">
         <property name="editable">
          <bool>true</bool>
         </property>
@@ -308,7 +308,7 @@ QStatusBar {
      </layout>
     </item>
     <item>
-     <widget class="QSplitter" name="qsplitter">
+     <widget class="QSplitter" name="splitterMain">
       <property name="sizePolicy">
        <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
         <horstretch>0</horstretch>
@@ -384,11 +384,11 @@ QStatusBar {
              </layout>
             </item>
             <item>
-             <layout class="QHBoxLayout" name="horizontalLayout_tiff2png">
+             <layout class="QHBoxLayout" name="horizontalLayout_checkBoxTiff2Png">
               <item>
-               <widget class="QCheckBox" name="tiff2png">
+               <widget class="QCheckBox" name="checkBoxTiff2Png">
                 <property name="text">
-                 <string>tiff2png</string>
+                 <string>checkBoxTiff2Png</string>
                 </property>
                </widget>
               </item>
@@ -467,14 +467,14 @@ QStatusBar {
              </layout>
             </item>
             <item>
-             <widget class="QPushButton" name="dataProcessingBtn">
+             <widget class="QPushButton" name="btnDataProcessing">
               <property name="text">
                <string>处理数据</string>
               </property>
              </widget>
             </item>
             <item>
-             <widget class="QTextBrowser" name="textBrowser">
+             <widget class="QTextBrowser" name="textBrowserDataPrepareHelp">
               <property name="html">
                <string>&lt;!DOCTYPE HTML PUBLIC &quot;-//W3C//DTD HTML 4.0//EN&quot; &quot;http://www.w3.org/TR/REC-html40/strict.dtd&quot;&gt;
 &lt;html&gt;&lt;head&gt;&lt;meta name=&quot;qrichtext&quot; content=&quot;1&quot; /&gt;&lt;style type=&quot;text/css&quot;&gt;
@@ -496,7 +496,7 @@ p, li { white-space: pre-wrap; }
         <attribute name="title">
          <string>标注</string>
         </attribute>
-        <widget class="QTextBrowser" name="textBrowser_2">
+        <widget class="QTextBrowser" name="textBrowserLabelHelp">
          <property name="geometry">
           <rect>
            <x>15</x>
@@ -669,7 +669,7 @@ p, li { white-space: pre-wrap; }
                         <widget class="QFrame" name="labelMapContainer"/>
                        </item>
                        <item row="0" column="0">
-                        <widget class="QPushButton" name="scanJsonBtn">
+                        <widget class="QPushButton" name="btnScanJson">
                          <property name="text">
                           <string>扫描所有文件</string>
                          </property>
@@ -678,14 +678,14 @@ p, li { white-space: pre-wrap; }
                        <item row="0" column="1">
                         <layout class="QHBoxLayout" name="horizontalLayout_3">
                          <item>
-                          <widget class="QLabel" name="label">
+                          <widget class="QLabel" name="labelNfp">
                            <property name="text">
                             <string>特征点个数</string>
                            </property>
                           </widget>
                          </item>
                          <item>
-                          <widget class="QLineEdit" name="NFPlineEdit"/>
+                          <widget class="QLineEdit" name="lineEditNumFeaturePoints"/>
                          </item>
                         </layout>
                        </item>
@@ -694,11 +694,11 @@ p, li { white-space: pre-wrap; }
                     </item>
                    </layout>
                   </widget>
-                  <widget class="QWidget" name="tab">
+                  <widget class="QWidget" name="tabPreviewHelp">
                    <attribute name="title">
                     <string>解释说明</string>
                    </attribute>
-                   <widget class="QTextBrowser" name="textBrowser_3">
+                   <widget class="QTextBrowser" name="textBrowserPreviewHelp">
                     <property name="geometry">
                      <rect>
                       <x>5</x>
@@ -736,7 +736,7 @@ p, li { white-space: pre-wrap; }
           </widget>
          </item>
          <item>
-          <widget class="QPushButton" name="splitTrainDataBtn">
+          <widget class="QPushButton" name="btnSplitTrainData">
            <property name="text">
             <string>开始划分</string>
            </property>
@@ -748,18 +748,18 @@ p, li { white-space: pre-wrap; }
         <attribute name="title">
          <string>训练数据可视化</string>
         </attribute>
-        <layout class="QVBoxLayout" name="verticalLayout_2">
+        <layout class="QVBoxLayout" name="layoutVisualTrainCanvas">
          <item>
           <layout class="QHBoxLayout" name="horizontalLayout_4">
            <item>
-            <widget class="QPushButton" name="lastImgBtn">
+            <widget class="QPushButton" name="btnLastImage">
              <property name="text">
               <string>上一张 A</string>
              </property>
             </widget>
            </item>
            <item>
-            <widget class="QPushButton" name="nextImgBtn">
+            <widget class="QPushButton" name="btnNextImage">
              <property name="text">
               <string>下一张 D</string>
              </property>
@@ -884,7 +884,7 @@ p, li { white-space: pre-wrap; }
                  </widget>
                 </item>
                 <item row="6" column="0">
-                 <widget class="QLabel" name="label_2">
+                 <widget class="QLabel" name="labelHflip">
                   <property name="text">
                    <string>水平翻转概率</string>
                   </property>
@@ -901,21 +901,21 @@ p, li { white-space: pre-wrap; }
                  </widget>
                 </item>
                 <item row="6" column="1">
-                 <widget class="QLineEdit" name="hflipLineEdit">
+                 <widget class="QLineEdit" name="lineEditHflipRatio">
                   <property name="text">
                    <string>0.5</string>
                   </property>
                  </widget>
                 </item>
                 <item row="7" column="1">
-                 <widget class="QLineEdit" name="vflipLineEdit">
+                 <widget class="QLineEdit" name="lineEditVflipRatio">
                   <property name="text">
                    <string>0</string>
                   </property>
                  </widget>
                 </item>
                 <item row="7" column="0">
-                 <widget class="QLabel" name="label_3">
+                 <widget class="QLabel" name="labelVflip">
                   <property name="text">
                    <string>上下翻转概率</string>
                   </property>
@@ -925,7 +925,7 @@ p, li { white-space: pre-wrap; }
               </widget>
              </item>
              <item>
-              <widget class="QPushButton" name="YoloTrainBtn">
+              <widget class="QPushButton" name="btnTrainYolo">
                <property name="text">
                 <string>开始 YOLO 训练</string>
                </property>
@@ -976,7 +976,7 @@ p, li { white-space: pre-wrap; }
                  </widget>
                 </item>
                 <item row="4" column="0">
-                 <widget class="QLabel" name="labelHrnetLr">
+                 <widget class="QLabel" name="labelHrnetImgSize">
                   <property name="text">
                    <string>image size</string>
                   </property>
@@ -1028,7 +1028,7 @@ p, li { white-space: pre-wrap; }
                  </widget>
                 </item>
                 <item row="4" column="2">
-                 <widget class="QLineEdit" name="HRNetImgSizeLineEdit">
+                 <widget class="QLineEdit" name="lineEditHrnetImgSize">
                   <property name="text">
                    <string>512</string>
                   </property>
@@ -1038,7 +1038,7 @@ p, li { white-space: pre-wrap; }
               </widget>
              </item>
              <item>
-              <widget class="QPushButton" name="HRNetTrainBtn">
+              <widget class="QPushButton" name="btnTrainHrnet">
                <property name="text">
                 <string>开始 HRNet 训练</string>
                </property>
@@ -1058,17 +1058,17 @@ p, li { white-space: pre-wrap; }
          <item>
           <layout class="QHBoxLayout" name="horizontalLayout_5">
            <item>
-            <widget class="QLabel" name="label_4">
+            <widget class="QLabel" name="labelYoloModel">
              <property name="text">
               <string>Yolo 模型</string>
              </property>
             </widget>
            </item>
            <item>
-            <widget class="QComboBox" name="YoloModelCombbox"/>
+            <widget class="QComboBox" name="comboBoxYoloModel"/>
            </item>
            <item>
-            <widget class="QPushButton" name="exportYoloOnnxBtn">
+            <widget class="QPushButton" name="btnExportYoloOnnx">
              <property name="text">
               <string>导出onnx模型</string>
              </property>
@@ -1079,17 +1079,17 @@ p, li { white-space: pre-wrap; }
          <item>
           <layout class="QHBoxLayout" name="horizontalLayout_8">
            <item>
-            <widget class="QLabel" name="label_5">
+            <widget class="QLabel" name="labelHrnetModel">
              <property name="text">
               <string>HRNet 模型</string>
              </property>
             </widget>
            </item>
            <item>
-            <widget class="QComboBox" name="HRNetModelCombbox"/>
+            <widget class="QComboBox" name="comboBoxHrnetModel"/>
            </item>
            <item>
-            <widget class="QPushButton" name="exportHRNetOnnxBtn">
+            <widget class="QPushButton" name="btnExportHrnetOnnx">
              <property name="text">
               <string>导出onnx模型</string>
              </property>
@@ -1100,14 +1100,14 @@ p, li { white-space: pre-wrap; }
          <item>
           <layout class="QHBoxLayout" name="horizontalLayout_10">
            <item>
-            <widget class="QLabel" name="label_6">
+            <widget class="QLabel" name="labelInferFolder">
              <property name="text">
               <string>批处理文件夹</string>
              </property>
             </widget>
            </item>
            <item>
-            <widget class="QLineEdit" name="inferImgForlderLineEdit">
+            <widget class="QLineEdit" name="lineEditInferImageFolder">
              <property name="placeholderText">
               <string>选择用于推理的文件夹</string>
              </property>
@@ -1116,7 +1116,7 @@ p, li { white-space: pre-wrap; }
           </layout>
          </item>
          <item>
-          <widget class="QTabWidget" name="tabWidget">
+          <widget class="QTabWidget" name="tabWidgetInference">
            <property name="currentIndex">
             <number>0</number>
            </property>
@@ -1174,7 +1174,7 @@ p, li { white-space: pre-wrap; }
                  <item>
                   <layout class="QHBoxLayout" name="horizontalLayout_11">
                    <item>
-                    <widget class="QLabel" name="label_7">
+                    <widget class="QLabel" name="labelInferRetFolder">
                      <property name="text">
                       <string>推理输出文件夹</string>
                      </property>
@@ -1190,7 +1190,7 @@ p, li { white-space: pre-wrap; }
                   </layout>
                  </item>
                  <item>
-                  <widget class="QCheckBox" name="saveImgCB">
+                  <widget class="QCheckBox" name="checkBoxSaveImage">
                    <property name="toolTip">
                     <string>保存带推理结果的图片到输出文件夹</string>
                    </property>
@@ -1203,7 +1203,7 @@ p, li { white-space: pre-wrap; }
                   </widget>
                  </item>
                  <item>
-                  <widget class="QCheckBox" name="saveErrCB">
+                  <widget class="QCheckBox" name="checkBoxSaveError">
                    <property name="toolTip">
                     <string>若有真值，将计算并输出误差统计</string>
                    </property>
@@ -1218,7 +1218,7 @@ p, li { white-space: pre-wrap; }
                  <item>
                   <layout class="QHBoxLayout" name="horizontalLayout_7">
                    <item>
-                    <widget class="QCheckBox" name="saveJsonCB">
+                    <widget class="QCheckBox" name="checkBoxSaveJson">
                      <property name="toolTip">
                       <string>将推理关键点/框保存为 JSON 文件</string>
                      </property>
@@ -1231,7 +1231,7 @@ p, li { white-space: pre-wrap; }
                     </widget>
                    </item>
                    <item>
-                    <widget class="QCheckBox" name="savePartJsonCB">
+                    <widget class="QCheckBox" name="checkBoxSavePartJson">
                      <property name="text">
                       <string>保存部分标签json</string>
                      </property>
@@ -1240,7 +1240,7 @@ p, li { white-space: pre-wrap; }
                   </layout>
                  </item>
                  <item>
-                  <widget class="QPushButton" name="batchInferBtn">
+                  <widget class="QPushButton" name="btnBatchInfer">
                    <property name="text">
                     <string>开始批量推理</string>
                    </property>

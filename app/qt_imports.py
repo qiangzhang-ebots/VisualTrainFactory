@@ -1,0 +1,34 @@
+"""Central PyQt5 imports for the application."""
+
+from PyQt5.QtCore import (
+    QEvent,
+    QModelIndex,
+    QObject,
+    Qt,
+    QTimer,
+    pyqtSignal as Signal,
+)
+from PyQt5.QtWidgets import (
+    QApplication,
+    QAbstractItemView,
+    QCheckBox,
+    QComboBox,
+    QDoubleSpinBox,
+    QFileDialog,
+    QFileSystemModel,
+    QFrame,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMessageBox,
+    QMainWindow,
+    QScrollArea,
+    QSpinBox,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)

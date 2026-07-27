@@ -1,0 +1,1 @@
+"""VisualTrainFactory application package."""

@@ -19,10 +19,6 @@ class ConvertInfo:
 		self.Seed = 42
 
 
-# 兼容旧代码里可能写成 ConverInfo 的调用方式。
-ConverInfo = ConvertInfo
-
-
 IMAGE_SUFFIXES = ('.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff')
 
 

@@ -1,0 +1,24 @@
+QTableWidget {
+  background-color: #0f172a;
+  color: #f8fafc;
+  gridline-color: #334155;
+  alternate-background-color: #111827;
+}
+QHeaderView::section {
+  background-color: #1e293b;
+  color: #f8fafc;
+  border: 1px solid #334155;
+  padding: 4px;
+}
+QTableWidget::item:selected {
+  background: #2563eb;
+  color: #ffffff;
+}
+QListWidget {
+  background: #071027;
+  color: #f8fafc;
+  padding: 4px;
+}
+QListWidget::item {
+  margin-bottom: 4px;
+}
