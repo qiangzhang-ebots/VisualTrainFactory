@@ -161,6 +161,10 @@ class VisualTrainFactoryWindow(QMainWindow):
         if current_directory:
             self._update_folder_tree_view(current_directory)
 
+    def _on_work_directory_text_changed(self, directory):
+        self._update_folder_tree_view(directory)
+        self._restore_persisted_state(directory)
+
     def _on_folder_tree_selection_changed(self, selected, deselected):
         self.train_data_visualization_controller.on_folder_tree_changed(selected, deselected)
         self.inference_controller.on_folder_tree_changed(selected, deselected)
@@ -189,7 +193,7 @@ class VisualTrainFactoryWindow(QMainWindow):
 
     def _connect_signals(self):
         self.btnSelectWorkDirectory.clicked.connect(self.choose_work_directory)
-        self.comboBoxWorkDirectory.currentTextChanged.connect(self._update_folder_tree_view)
+        self.comboBoxWorkDirectory.currentTextChanged.connect(self._on_work_directory_text_changed)
         self.btnDataProcessing.clicked.connect(self.data_prepare_controller.run_data_processing)
         self.btnScanJson.clicked.connect(self.label_data_preview_controller.scan_group_data_labels)
         self.btnSplitTrainData.clicked.connect(self.label_data_preview_controller.run_train_data_split)
@@ -450,19 +454,21 @@ class VisualTrainFactoryWindow(QMainWindow):
         payload["workDirectory"] = normalized_directory
         self._write_json_payload(config_path, payload)
 
-    def _restore_persisted_state(self):
-        if not self.recent_work_directories:
-            return False
-
-        work_directory = None
-        for candidate in self.recent_work_directories:
-            candidate_path = Path(candidate).expanduser()
-            if candidate_path.is_dir():
-                work_directory = str(candidate_path)
-                break
-
+    def _restore_persisted_state(self, work_directory=None):
         if work_directory is None:
-            work_directory = str(Path(self.recent_work_directories[0]).expanduser())
+            if not self.recent_work_directories:
+                return False
+
+            for candidate in self.recent_work_directories:
+                candidate_path = Path(candidate).expanduser()
+                if candidate_path.is_dir():
+                    work_directory = str(candidate_path)
+                    break
+
+            if work_directory is None:
+                work_directory = str(Path(self.recent_work_directories[0]).expanduser())
+        else:
+            work_directory = str(Path(work_directory).expanduser())
 
         self.comboBoxWorkDirectory.blockSignals(True)
         if self.comboBoxWorkDirectory.findText(work_directory) < 0:
@@ -509,6 +515,9 @@ class VisualTrainFactoryWindow(QMainWindow):
         self._update_folder_tree_view(normalized_directory)
         self.mark_image_list_dirty()
 
+        # 恢复该目录之前保存的控件状态
+        self._restore_persisted_state(normalized_directory)
+
     def _update_folder_tree_view(self, directory: str):
         normalized_directory = str(Path(directory).expanduser()).strip()
         directory_path = Path(normalized_directory)
@@ -529,7 +538,7 @@ class VisualTrainFactoryWindow(QMainWindow):
         selected_directory = QFileDialog.getExistingDirectory(self, "选择文件夹", start_directory)
         if not selected_directory:
             return
-        self._set_work_directory(selected_directory)
+        self._set_work_directory(selected_directory) 
 
     def get_selected_folder_tree_path(self):
         tree_index = self.folderTreeView.currentIndex()
