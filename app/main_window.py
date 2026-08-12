@@ -218,6 +218,13 @@ class VisualTrainFactoryWindow(QMainWindow):
         self.inference_controller.sync_task_ui()
         self.btnExportYoloOnnx.clicked.connect(self.inference_controller.export_yolo_onnx)
         self.btnExportHrnetOnnx.clicked.connect(self.inference_controller.export_hrnet_onnx)
+        self.btnExportYoloEngine.clicked.connect(
+            lambda: self.inference_controller.export_engine("yolo")
+        )
+        self.btnExportEngine.clicked.connect(
+            lambda: self.inference_controller.export_engine("hrnet")
+        )
+        self.btnSelectTensorrtPath.clicked.connect(self.inference_controller.select_tensorrt_path)
         self.btnBatchInfer.clicked.connect(self.inference_controller.run_batch_inference)
         self.checkBoxSaveJson.toggled.connect(self.inference_controller.on_save_json_toggled)
         self.checkBoxSavePartJson.toggled.connect(self.inference_controller.on_save_part_json_toggled)

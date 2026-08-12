@@ -121,6 +121,103 @@ class InferenceController(TabController):
         except Exception as exc:
             self.append_log(f"HRNet ONNX 导出失败: {exc}\n{traceback.format_exc()}")
 
+    def export_engine(self, model_type="yolo"):
+        try:
+            import subprocess
+
+            if self.get_workspace() is None:
+                self.append_log("请先选择有效的工作目录。")
+                return
+
+            if model_type == "hrnet":
+                if self._is_obb_task():
+                    self.append_log("当前任务为 OBB，HRNet 不可用。")
+                    return
+
+                model_path = read_combo_data(self.window, "comboBoxHrnetModel")
+                if not model_path:
+                    self.append_log("请先在推理页选择一个 HRNet 模型。")
+                    return
+
+                model_dir = Path(model_path)
+                # HRNet 导出的 onnx 文件名不固定（如 epoch_200.onnx），且位于模型目录直接下级。
+                # 这里直接扫描目录下的 *.onnx，选取最新生成的一个。
+                onnx_files = sorted(
+                    model_dir.glob("*.onnx"),
+                    key=lambda p: p.stat().st_mtime,
+                    reverse=True,
+                )
+                if not onnx_files:
+                    self.append_log(
+                        f"未在模型目录找到 onnx 文件: {model_dir}，请先执行“导出onnx模型”。"
+                    )
+                    return
+                onnx_path = onnx_files[0]
+                self.append_log(f"使用 HRNet onnx: {onnx_path}")
+            else:
+                model_path = read_combo_data(self.window, "comboBoxYoloModel")
+                if not model_path:
+                    self.append_log("请先在推理页选择一个 YOLO 模型。")
+                    return
+
+                onnx_path = Path(model_path) / "weights" / "best.onnx"
+
+            if not onnx_path.exists():
+                self.append_log(
+                    f"未找到 onnx 文件: {onnx_path}，请先执行对应的“导出onnx模型”。"
+                )
+                return
+
+            tensorrt_path = read_text(self.window, "lineEditTensorrtPath").strip()
+            if not tensorrt_path:
+                self.append_log("请先配置 TensorRT 路径。")
+                return
+
+            trtexec_path = Path(tensorrt_path) / "trtexec"
+            if not trtexec_path.is_file():
+                self.append_log(f"未找到 trtexec 可执行文件: {trtexec_path}")
+                return
+
+            engine_path = onnx_path.with_suffix(".engine")
+            cmd = [
+                str(trtexec_path),
+                f"--onnx={onnx_path}",
+                f"--saveEngine={engine_path}",
+            ]
+            self.append_log(f"开始导出 Engine 模型，执行命令: {' '.join(cmd)}")
+            result = subprocess.run(
+                cmd,
+                cwd=str(Path(tensorrt_path)),
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                self.append_log(
+                    f"trtexec 执行失败 (返回码 {result.returncode}):\n{result.stdout}\n{result.stderr}"
+                )
+                return
+
+            self.append_log(f"Engine 模型导出完成: {engine_path}")
+        except Exception as exc:
+            self.append_log(f"Engine 模型导出失败: {exc}\n{traceback.format_exc()}")
+
+    def select_tensorrt_path(self):
+        from PyQt5.QtWidgets import QFileDialog
+
+        start_directory = read_text(self.window, "lineEditTensorrtPath").strip()
+        if not start_directory:
+            start_directory = str(Path.home())
+
+        selected_directory = QFileDialog.getExistingDirectory(
+            self.window, "选择 TensorRT bin 路径", start_directory
+        )
+        if not selected_directory:
+            return
+
+        self.window.lineEditTensorrtPath.blockSignals(True)
+        self.window.lineEditTensorrtPath.setText(selected_directory)
+        self.window.lineEditTensorrtPath.blockSignals(False)
+
     def refresh_model_lists(self):
         workspace = self.get_workspace()
         yolo_combo = getattr(self.window, "comboBoxYoloModel", None)

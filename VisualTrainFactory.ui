@@ -1170,10 +1170,17 @@ p, li { white-space: pre-wrap; }
              </property>
             </widget>
            </item>
-          </layout>
-         </item>
-         <item>
-          <layout class="QHBoxLayout" name="horizontalLayout_8">
+           <item>
+            <widget class="QPushButton" name="btnExportYoloEngine">
+             <property name="text">
+              <string>导出Engine模型</string>
+             </property>
+            </widget>
+           </item>
+           </layout>
+           </item>
+           <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_8">
            <item>
             <widget class="QLabel" name="labelHrnetModel">
              <property name="text">
@@ -1188,6 +1195,38 @@ p, li { white-space: pre-wrap; }
             <widget class="QPushButton" name="btnExportHrnetOnnx">
              <property name="text">
               <string>导出onnx模型</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnExportEngine">
+             <property name="text">
+              <string>导出Engine模型</string>
+             </property>
+            </widget>
+           </item>
+           </layout>
+           </item>
+         <item>
+          <layout class="QHBoxLayout" name="horizontalLayout_tensorrt_path">
+           <item>
+            <widget class="QLabel" name="labelTensorrtPath">
+             <property name="text">
+              <string>TensorRT路径：</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLineEdit" name="lineEditTensorrtPath">
+             <property name="text">
+              <string>/home/ebots/Desktop/zhq/TensorRT-10.9.0.34.Linux.x86_64-gnu.cuda-12.8/TensorRT-10.9.0.34/targets/x86_64-linux-gnu/bin</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnSelectTensorrtPath">
+             <property name="text">
+              <string>选择路径</string>
              </property>
             </widget>
            </item>
