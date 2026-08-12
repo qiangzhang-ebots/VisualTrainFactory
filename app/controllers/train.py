@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import traceback
 
 from app.controllers.base import TabController
@@ -10,6 +11,14 @@ class TrainController(TabController):
     def _is_obb_task(self) -> bool:
         radio_obb = getattr(self.window, "radioTaskObb", None)
         return bool(radio_obb is not None and radio_obb.isChecked())
+
+    def _get_yolo_model_size(self) -> str:
+        """读取用户选择的 YOLO 模型大小 (n/s/m/l/x)，默认 n。"""
+        for size in ("n", "s", "m", "l", "x"):
+            radio = getattr(self.window, f"radioYoloSize{size.upper()}", None)
+            if radio is not None and radio.isChecked():
+                return size
+        return "n"
 
     def on_enter(self):
         self.sync_task_ui()
@@ -39,10 +48,23 @@ class TrainController(TabController):
         weights_edit = getattr(self.window, "lineEditYoloWeights", None)
         if weights_edit is not None:
             current = weights_edit.text().strip()
+            model_size = self._get_yolo_model_size()
+
+            # 同步任务类型 (pose/obb)
             if is_obb and current.endswith("-pose.pt"):
-                weights_edit.setText(current[:-len("-pose.pt")] + "-obb.pt")
+                current = current[:-len("-pose.pt")] + "-obb.pt"
             elif not is_obb and current.endswith("-obb.pt"):
-                weights_edit.setText(current[:-len("-obb.pt")] + "-pose.pt")
+                current = current[:-len("-obb.pt")] + "-pose.pt"
+
+            # 同步模型大小 (n/s/m/l/x)
+            match = re.match(r"^(yolo26)([nsmlx])(-(?:pose|obb))\.pt$", current)
+            if match:
+                prefix, _, suffix = match.groups()
+                expected = f"{prefix}{model_size}{suffix}.pt"
+                if current != expected:
+                    current = expected
+
+            weights_edit.setText(current)
 
     def run_yolo_train(self):
         try:
@@ -66,10 +88,11 @@ class TrainController(TabController):
             vflip_ratio = read_float(self.window, "lineEditVflipRatio", default=0.0)
             workers = read_int(self.window, "spinBoxYoloWorkers", default=8)
             weights = read_text(self.window, "lineEditYoloWeights", default="") or None
+            model_size = self._get_yolo_model_size()
             log_name = _get_log_name()
 
             if self._is_obb_task():
-                self.append_log("开始 YOLO OBB 训练...")
+                self.append_log(f"开始 YOLO OBB 训练 (模型大小: {model_size})...")
                 trainYoloObb(
                     work_dir_text,
                     label_map,
@@ -82,10 +105,11 @@ class TrainController(TabController):
                     hflipRatio=hflip_ratio,
                     vflipRatio=vflip_ratio,
                     weights=weights,
+                    modelSize=model_size,
                 )
                 self.append_log("YOLO OBB 训练已完成。")
             else:
-                self.append_log("开始YOLO训练...")
+                self.append_log(f"开始YOLO训练 (模型大小: {model_size})...")
                 trainYolo(
                     work_dir_text,
                     label_map,
@@ -98,6 +122,7 @@ class TrainController(TabController):
                     hflipRatio=hflip_ratio,
                     vflipRatio=vflip_ratio,
                     weights=weights,
+                    modelSize=model_size,
                 )
                 self.append_log("YOLO训练已完成。")
         except Exception as exc:

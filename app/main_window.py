@@ -206,6 +206,12 @@ class VisualTrainFactoryWindow(QMainWindow):
             if radio is not None:
                 radio.toggled.connect(self._on_model_task_changed)
 
+        # YOLO 模型大小单选按钮：切换时同步预训练权重文本框
+        for size in ("n", "s", "m", "l", "x"):
+            radio = getattr(self, f"radioYoloSize{size.upper()}", None)
+            if radio is not None:
+                radio.toggled.connect(self._on_model_task_changed)
+
         self.btnTrainYolo.clicked.connect(self.train_controller.run_yolo_train)
         self.btnTrainHrnet.clicked.connect(self.train_controller.run_hrnet_train)
         self.train_controller.sync_task_ui()

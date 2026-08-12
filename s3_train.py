@@ -65,7 +65,7 @@ is_torchrun_worker = os.environ.get('HRNET_DIST_LAUNCHED') == '1' and os.environ
 
 
 def trainYolo(workspace, labelName, epochs, batch_size, 
-              img_size, gpu, logName, workers, hflipRatio, vflipRatio, weights=None):
+              img_size, gpu, logName, workers, hflipRatio, vflipRatio, weights=None, modelSize='n'):
     import yaml
 
     workspace_path = _resolve_workspace(workspace)
@@ -100,7 +100,7 @@ def trainYolo(workspace, labelName, epochs, batch_size,
         with open(yaml_path, 'w', encoding='utf-8') as handle:
             yaml.safe_dump(data, handle, sort_keys=False, allow_unicode=True)
 
-    model = YOLO(weights or 'yolo26n-pose.pt')
+    model = YOLO(weights or f'yolo26{modelSize}-pose.pt')
     model.train(
         data=str(yaml_path),
         epochs=int(epochs),
@@ -118,7 +118,7 @@ def trainYolo(workspace, labelName, epochs, batch_size,
 
 
 def trainYoloObb(workspace, labelName, epochs, batch_size,
-                 img_size, gpu, logName, workers, hflipRatio, vflipRatio, weights=None):
+                 img_size, gpu, logName, workers, hflipRatio, vflipRatio, weights=None, modelSize='n'):
     import yaml
 
     workspace_path = _resolve_workspace(workspace)
@@ -150,7 +150,7 @@ def trainYoloObb(workspace, labelName, epochs, batch_size,
             with open(yaml_path, 'w', encoding='utf-8') as handle:
                 yaml.safe_dump(data, handle, sort_keys=False, allow_unicode=True)
 
-    model = YOLO(weights or 'yolo26n-obb.pt')
+    model = YOLO(weights or f'yolo26{modelSize}-obb.pt')
     model.train(
         data=str(yaml_path),
         epochs=int(epochs),
