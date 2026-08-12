@@ -1375,6 +1375,19 @@ p, li { white-space: pre-wrap; }
                   </layout>
                  </item>
                  <item>
+                  <widget class="QCheckBox" name="checkBoxNormalizeImage">
+                   <property name="toolTip">
+                    <string>对 TIFF 等图像做归一化 (img-min)/(max-min)*255 后再推理</string>
+                   </property>
+                   <property name="text">
+                    <string>归一化图像 (img-min)/(max-min)*255</string>
+                   </property>
+                   <property name="checked">
+                    <bool>true</bool>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
                   <widget class="QPushButton" name="btnBatchInfer">
                    <property name="text">
                     <string>开始批量推理</string>

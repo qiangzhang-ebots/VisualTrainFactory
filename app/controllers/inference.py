@@ -396,6 +396,7 @@ class InferenceController(TabController):
         save_part_json_enabled = read_bool(self.window, "checkBoxSavePartJson")
         save_img_enabled = read_bool(self.window, "checkBoxSaveImage")
         save_err_enabled = read_bool(self.window, "checkBoxSaveError")
+        normalize_enabled = read_bool(self.window, "checkBoxNormalizeImage")
         part_ids = self.get_save_part_label_ids() if save_part_json_enabled else set()
 
         model = InferenceModel()
@@ -437,7 +438,7 @@ class InferenceController(TabController):
 
                 for idx, img_path in enumerate(images, start=1):
                     try:
-                        ret = model.predict(str(img_path))
+                        ret = model.predict(str(img_path), normalize=normalize_enabled)
                         pred_ret.append(ret)
                         gt_item = workspace.find_label_file(img_path.stem)
                         gt_files.append(gt_item)

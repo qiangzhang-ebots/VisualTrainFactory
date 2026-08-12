@@ -40,15 +40,39 @@ def _to_numpy(value: Any) -> np.ndarray:
     return np.asarray(value)
 
 
-def _resolve_image(image: Union[str, Path, np.ndarray]) -> np.ndarray:
+def _resolve_image(image: Union[str, Path, np.ndarray], *, normalize: bool = False) -> np.ndarray:
     if isinstance(image, (str, Path)):
         img = cv2.imread(str(image))
         if img is None:
             raise FileNotFoundError(f'Image not found or unreadable: {image}')
+    elif isinstance(image, np.ndarray):
+        img = image
+    else:
+        raise TypeError(f'Unsupported image type: {type(image)!r}')
+
+    if normalize:
+        img = _normalize_image(img)
+
+    return img
+
+
+def _normalize_image(img: np.ndarray) -> np.ndarray:
+    """将图像线性归一化到 [0, 255]： (img - min) / (max - min) * 255。
+
+    对 TIFF 等高动态范围图像尤其有用，归一化不会改变通道数或尺寸，
+    仅做逐像素线性缩放并转回 uint8。
+    """
+    if img.dtype == np.uint8 and img.min() == 0 and img.max() == 255:
         return img
-    if isinstance(image, np.ndarray):
-        return image
-    raise TypeError(f'Unsupported image type: {type(image)!r}')
+
+    float_img = img.astype(np.float32)
+    min_val = float_img.min()
+    max_val = float_img.max()
+    if max_val - min_val <= 1e-8:
+        return np.zeros_like(img, dtype=np.uint8)
+
+    norm = (float_img - min_val) / (max_val - min_val) * 255.0
+    return norm.clip(0, 255).astype(np.uint8)
 
 
 def _resolve_model_path(model_path: Optional[Union[str, Path]], *, subdir: str,default_file: str) -> Path:
@@ -666,6 +690,7 @@ def statistics_result(gtFiles: Sequence[Union[str, Path, None]], predRet, class_
         image_row = {'image': str(gt_item) if isinstance(gt_item, (str, Path)) else str(idx)}
         for class_name in class_order:
             image_row[f'{class_name}_mean'] = float(np.mean(per_image_class_dists[class_name])) if per_image_class_dists[class_name] else np.nan
+        image_row['max_dist'] = float(img_max_dist) if (valid_dists and 'img_max_dist' in dir()) else np.nan
         image_error_rows.append(image_row)
 
     if not any(values for values in all_dist_by_class.values()):
@@ -783,6 +808,23 @@ def statistics_result(gtFiles: Sequence[Union[str, Path, None]], predRet, class_
 
     if max_error_img:
         print(f'Max Error Image: {max_error_img} with error: {max_error:.4f}')
+
+    # 误差最大的 5 张图（按单图最大关键点误差排序）
+    ranked = sorted(
+        (
+            row for row in image_error_rows
+            if not (isinstance(row.get('max_dist'), float) and np.isnan(row['max_dist']))
+        ),
+        key=lambda r: r['max_dist'],
+        reverse=True,
+    )[:5]
+    if ranked:
+        print('\n' + '=' * 60)
+        print('Top 5 Images with Largest Keypoint Error:')
+        print('-' * 60)
+        for rank, row in enumerate(ranked, start=1):
+            print(f'{rank}. error={row["max_dist"]:.4f}  path={row["image"]}')
+        print('=' * 60)
     print('-' * 50)
 
     print('\n' + '=' * 60)
@@ -827,11 +869,11 @@ class InferenceModel:
         self.hrnet_model = init_model(cfg, str(checkpoint_path), device='cuda:0')
         return self.hrnet_model
 
-    def predict(self, image: Union[str, Path, np.ndarray], conf_thr: float = BOX_SCORE_THR) -> Sequence[Any]:
+    def predict(self, image: Union[str, Path, np.ndarray], conf_thr: float = BOX_SCORE_THR, normalize: bool = False) -> Sequence[Any]:
         if self.yolo_model is None:
             return None
 
-        img = _resolve_image(image)
+        img = _resolve_image(image, normalize=normalize)
         ret = self.yolo_model.predict(img, verbose=False)
         if not ret or self.hrnet_model is None:
             return ret
