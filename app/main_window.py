@@ -201,7 +201,7 @@ class VisualTrainFactoryWindow(QMainWindow):
         self.btnNextImage.clicked.connect(self.train_data_visualization_controller.show_next_image)
         self.tabWidgetMain.currentChanged.connect(self._on_main_tab_changed)
 
-        for radio_name in ("radioTaskKeypoint", "radioTaskObb"):
+        for radio_name in ("radioTaskKeypoint", "radioTaskObb", "radioTaskSeg"):
             radio = getattr(self, radio_name, None)
             if radio is not None:
                 radio.toggled.connect(self._on_model_task_changed)

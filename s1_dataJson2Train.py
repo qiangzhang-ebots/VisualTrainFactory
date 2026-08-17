@@ -450,6 +450,52 @@ def process_filesYoloObb(convert_info: ConvertInfo):
 	return _process_files_yolo(convert_info, labelme2yolo_obb)
 
 
+def build_yolo_seg_line(label, points, img_w, img_h):
+	parts = [str(label)]
+	for x, y in points:
+		parts.append(f'{float(x) / img_w:.6f}')
+		parts.append(f'{float(y) / img_h:.6f}')
+	return ' '.join(parts)
+
+
+def labelme2yolo_seg(json_file, txt_file, img_w, img_h, convert_info):
+	with open(json_file, 'r', encoding='utf-8') as file:
+		data = json.load(file)
+
+	lines = []
+	shapes = data.get('shapes', [])
+	occupied_labels = _get_occupied_labels(convert_info)
+	label_map = _normalize_label_map(convert_info.Label2Int)
+
+	for shape in shapes:
+		label_text = str(shape.get('label', ''))
+		shape_type = shape.get('shape_type', '')
+
+		if label_text in occupied_labels:
+			continue
+
+		if shape_type != 'polygon':
+			continue
+
+		if label_text not in label_map:
+			continue
+
+		points = shape.get('points', [])
+		if len(points) < 3:
+			print(f'警告: 分割多边形必须至少包含3个点，已跳过: {json_file} 中的 shape {shape}')
+			continue
+
+		label = _resolve_category_id(label_text, convert_info)
+		lines.append(build_yolo_seg_line(label, points, img_w, img_h))
+
+	with open(txt_file, 'w', encoding='utf-8') as file:
+		file.write('\n'.join(lines))
+
+
+def process_filesYoloSeg(convert_info: ConvertInfo):
+	return _process_files_yolo(convert_info, labelme2yolo_seg)
+
+
 def _shape_to_coco_annotation(shape, json_file, image_id, annotation_id, image_width, image_height, convert_info, occupied_rects):
 	label_text = str(shape.get('label', ''))
 	if label_text in _get_occupied_labels(convert_info):

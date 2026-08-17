@@ -123,6 +123,49 @@ def _result_image_size(image: Union[str, Path, np.ndarray, None], ret: Sequence[
     return 0, 0
 
 
+def _mask_polygons(masks_obj) -> List[np.ndarray]:
+    """从 ultralytics Masks 对象提取像素坐标多边形列表，每个元素为 (N, 2)。
+
+    优先使用 masks.xy（像素坐标多边形，与 boxes 按实例索引对齐）；
+    退回使用 masks.data + cv2.findContours / cv2.approxPolyDP 提取外轮廓。
+    """
+    polys: List[np.ndarray] = []
+
+    try:
+        xy = getattr(masks_obj, 'xy', None)
+        if xy is not None and len(xy) > 0:
+            for arr in xy:
+                arr_np = _to_numpy(arr)
+                if arr_np.ndim == 2 and arr_np.shape[1] == 2 and len(arr_np) >= 3:
+                    polys.append(arr_np.astype(np.float32))
+            if polys:
+                return polys
+    except Exception:
+        polys = []
+
+    try:
+        data = _to_numpy(masks_obj.data)
+    except Exception:
+        return polys
+    if data.ndim != 3:
+        return polys
+
+    for i in range(data.shape[0]):
+        mask_bin = (data[i] > 0.5).astype(np.uint8)
+        if int(mask_bin.sum()) == 0:
+            continue
+        contours, _ = cv2.findContours(mask_bin, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            continue
+        contour = max(contours, key=cv2.contourArea)
+        epsilon = 0.002 * cv2.arcLength(contour, True)
+        approx = cv2.approxPolyDP(contour, epsilon, True)
+        pts = approx.reshape(-1, 2).astype(np.float32)
+        if len(pts) >= 3:
+            polys.append(pts)
+    return polys
+
+
 def draw_results(image: Union[str, Path, np.ndarray], ret: Sequence[Any], class_names: Optional[Dict[int, str]] = None) -> np.ndarray:
     vis_img = _resolve_image(image).copy()
     if not ret:
@@ -130,6 +173,27 @@ def draw_results(image: Union[str, Path, np.ndarray], ret: Sequence[Any], class_
 
     result = ret[0]
     mapping = class_names or {}
+
+    masks_obj = getattr(result, 'masks', None)
+    if masks_obj is not None and len(masks_obj) > 0:
+        boxes_obj = getattr(result, 'boxes', None)
+        boxes_conf = _to_numpy(boxes_obj.conf) if boxes_obj is not None and hasattr(boxes_obj, 'conf') else None
+        boxes_cls = _to_numpy(boxes_obj.cls) if boxes_obj is not None and hasattr(boxes_obj, 'cls') else None
+        polys = _mask_polygons(masks_obj)
+        for obj_idx, poly in enumerate(polys):
+            if boxes_conf is not None and obj_idx < len(boxes_conf) and float(boxes_conf[obj_idx]) < BOX_SCORE_THR:
+                continue
+            class_id = int(boxes_cls[obj_idx]) if boxes_cls is not None and obj_idx < len(boxes_cls) else -1
+            label_name = mapping.get(class_id, str(class_id))
+            poly_int = np.asarray(poly, dtype=np.int32).reshape((-1, 1, 2))
+            cv2.polylines(vis_img, [poly_int], isClosed=True, color=(0, 255, 0), thickness=1)
+            text_x = int(np.min(poly[:, 0]))
+            text_y = int(np.min(poly[:, 1]))
+            box_text = label_name
+            if boxes_conf is not None and obj_idx < len(boxes_conf):
+                box_text = f'{label_name} {float(boxes_conf[obj_idx]):.2f}'
+            cv2.putText(vis_img, box_text, (text_x, max(0, text_y - 10)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+        return vis_img
 
     obb_obj = getattr(result, 'obb', None)
     if obb_obj is not None and len(obb_obj) > 0:
@@ -264,14 +328,13 @@ def save_result(image: Union[str, Path, np.ndarray, None], imgName: str, ret: Se
         mapping = class_names or {}
         part_set = set(part_labels) if part_labels is not None else None
 
-        obb_obj = getattr(result, 'obb', None)
-        if obb_obj is not None and len(obb_obj) > 0:
-            boxes_conf = _to_numpy(obb_obj.conf) if hasattr(obb_obj, 'conf') else None
-            boxes_cls = _to_numpy(obb_obj.cls) if hasattr(obb_obj, 'cls') else None
-            corners = _to_numpy(obb_obj.xyxyxyxy)
-            if corners.ndim == 2 and corners.shape[1] == 8:
-                corners = corners.reshape(-1, 4, 2)
-            for obj_idx in range(corners.shape[0]):
+        masks_obj = getattr(result, 'masks', None)
+        if masks_obj is not None and len(masks_obj) > 0:
+            boxes_obj = getattr(result, 'boxes', None)
+            boxes_conf = _to_numpy(boxes_obj.conf) if boxes_obj is not None and hasattr(boxes_obj, 'conf') else None
+            boxes_cls = _to_numpy(boxes_obj.cls) if boxes_obj is not None and hasattr(boxes_obj, 'cls') else None
+            polys = _mask_polygons(masks_obj)
+            for obj_idx, poly in enumerate(polys):
                 if boxes_conf is not None and obj_idx < len(boxes_conf) and float(boxes_conf[obj_idx]) < BOX_SCORE_THR:
                     continue
                 class_id = int(boxes_cls[obj_idx]) if boxes_cls is not None and obj_idx < len(boxes_cls) else -1
@@ -281,20 +344,20 @@ def save_result(image: Union[str, Path, np.ndarray, None], imgName: str, ret: Se
                     continue
                 json_data['shapes'].append({
                     'label': mapping[class_id],
-                    'points': [[float(x), float(y)] for x, y in corners[obj_idx]],
+                    'points': [[float(x), float(y)] for x, y in poly],
                     'group_id': None,
                     'shape_type': 'polygon',
                     'flags': {},
                 })
         else:
-            boxes_obj = getattr(result, 'boxes', None)
-            keypoints_obj = getattr(result, 'keypoints', None)
-            if boxes_obj is not None and keypoints_obj is not None:
-                boxes_conf = _to_numpy(boxes_obj.conf) if hasattr(boxes_obj, 'conf') else None
-                boxes_cls = _to_numpy(boxes_obj.cls) if hasattr(boxes_obj, 'cls') else None
-                keypoints_data = _to_numpy(keypoints_obj.data)
-
-                for obj_idx in range(keypoints_data.shape[0]):
+            obb_obj = getattr(result, 'obb', None)
+            if obb_obj is not None and len(obb_obj) > 0:
+                boxes_conf = _to_numpy(obb_obj.conf) if hasattr(obb_obj, 'conf') else None
+                boxes_cls = _to_numpy(obb_obj.cls) if hasattr(obb_obj, 'cls') else None
+                corners = _to_numpy(obb_obj.xyxyxyxy)
+                if corners.ndim == 2 and corners.shape[1] == 8:
+                    corners = corners.reshape(-1, 4, 2)
+                for obj_idx in range(corners.shape[0]):
                     if boxes_conf is not None and obj_idx < len(boxes_conf) and float(boxes_conf[obj_idx]) < BOX_SCORE_THR:
                         continue
                     class_id = int(boxes_cls[obj_idx]) if boxes_cls is not None and obj_idx < len(boxes_cls) else -1
@@ -302,14 +365,37 @@ def save_result(image: Union[str, Path, np.ndarray, None], imgName: str, ret: Se
                         continue
                     if class_id not in mapping:
                         continue
-
                     json_data['shapes'].append({
                         'label': mapping[class_id],
-                        'points': [[float(x), float(y)] for x, y, *_ in keypoints_data[obj_idx]],
+                        'points': [[float(x), float(y)] for x, y in corners[obj_idx]],
                         'group_id': None,
                         'shape_type': 'polygon',
                         'flags': {},
                     })
+            else:
+                boxes_obj = getattr(result, 'boxes', None)
+                keypoints_obj = getattr(result, 'keypoints', None)
+                if boxes_obj is not None and keypoints_obj is not None:
+                    boxes_conf = _to_numpy(boxes_obj.conf) if hasattr(boxes_obj, 'conf') else None
+                    boxes_cls = _to_numpy(boxes_obj.cls) if hasattr(boxes_obj, 'cls') else None
+                    keypoints_data = _to_numpy(keypoints_obj.data)
+
+                    for obj_idx in range(keypoints_data.shape[0]):
+                        if boxes_conf is not None and obj_idx < len(boxes_conf) and float(boxes_conf[obj_idx]) < BOX_SCORE_THR:
+                            continue
+                        class_id = int(boxes_cls[obj_idx]) if boxes_cls is not None and obj_idx < len(boxes_cls) else -1
+                        if part_set is not None and class_id not in part_set:
+                            continue
+                        if class_id not in mapping:
+                            continue
+
+                        json_data['shapes'].append({
+                            'label': mapping[class_id],
+                            'points': [[float(x), float(y)] for x, y, *_ in keypoints_data[obj_idx]],
+                            'group_id': None,
+                            'shape_type': 'polygon',
+                            'flags': {},
+                        })
 
     with save_path.open('w', encoding='utf-8') as f:
         json.dump(json_data, f, ensure_ascii=False, indent=2)
@@ -838,6 +924,331 @@ def statistics_result(gtFiles: Sequence[Union[str, Path, None]], predRet, class_
     print('-' * 50)
     print(f'Image error summary saved to: {csv_path}')
     print(f'Error histogram saved to: {hist_dir}')
+
+
+def statistics_result_seg(gtFiles: Sequence[Union[str, Path, None]], predRet, class_names, workspace) -> None:
+    """分割任务误差分析（像素级 Dice）。
+
+    GT 侧将 txt 多边形（归一化坐标）用 cv2.fillPoly 光栅化为二值 mask；
+    pred 侧使用 result.masks.data 缩放到原图尺寸。逐 GT 与同 class 的 pred
+    按框 IoU（阈值 0.3）贪心匹配，统计每类 GT 数/命中数/召回率与 Dice 分布，
+    输出每类直方图、合并直方图、image_error_summary.csv，并打印最差 5 张。
+    """
+    from pathlib import Path
+
+    # Must use non-GUI backend: this may run off the Qt main thread.
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    import pandas as pd
+
+    workspace_path = Path(workspace).expanduser().resolve()
+    hist_dir = workspace_path / 'error_hist'
+    hist_dir.mkdir(parents=True, exist_ok=True)
+
+    class_id_to_name = {int(class_id): str(class_name) for class_id, class_name in class_names.items()}
+    name_to_class_id = {str(class_name): int(class_id) for class_id, class_name in class_names.items()}
+    class_order = [class_id_to_name[class_id] for class_id in sorted(class_id_to_name)]
+
+    def _get_result_item(pred_item):
+        if pred_item is None:
+            return None
+        if isinstance(pred_item, (list, tuple)):
+            return pred_item[0] if pred_item else None
+        return pred_item
+
+    def _get_image_shape(result_item, gt_item):
+        if result_item is not None:
+            orig_shape = getattr(result_item, 'orig_shape', None)
+            if orig_shape is not None and len(orig_shape) >= 2:
+                return int(orig_shape[0]), int(orig_shape[1])
+        if isinstance(gt_item, (str, Path)):
+            gt_path = Path(gt_item)
+            for image_dir_name in ('images', 'image', 'imgs', 'img'):
+                candidate_dir = gt_path.parent.parent / image_dir_name / gt_path.parent.name
+                if not candidate_dir.exists():
+                    continue
+                for suffix in ('.jpg', '.jpeg', '.png', '.bmp', '.tif', '.tiff'):
+                    candidate = candidate_dir / f'{gt_path.stem}{suffix}'
+                    if candidate.exists():
+                        img = cv2.imread(str(candidate))
+                        if img is not None:
+                            return int(img.shape[0]), int(img.shape[1])
+        return 0, 0
+
+    def _load_gt_content(gt_item):
+        if gt_item is None:
+            return ''
+        if isinstance(gt_item, (str, Path)):
+            gt_path = Path(gt_item)
+            if gt_path.exists():
+                return gt_path.read_text(encoding='utf-8', errors='ignore')
+            return str(gt_item)
+        return str(gt_item)
+
+    def _bbox_iou(box1, box2) -> float:
+        x1 = max(float(box1[0]), float(box2[0]))
+        y1 = max(float(box1[1]), float(box2[1]))
+        x2 = min(float(box1[2]), float(box2[2]))
+        y2 = min(float(box1[3]), float(box2[3]))
+        inter_w = max(0.0, x2 - x1)
+        inter_h = max(0.0, y2 - y1)
+        inter_area = inter_w * inter_h
+        area1 = max(0.0, float(box1[2]) - float(box1[0])) * max(0.0, float(box1[3]) - float(box1[1]))
+        area2 = max(0.0, float(box2[2]) - float(box2[0])) * max(0.0, float(box2[3]) - float(box2[1]))
+        union = area1 + area2 - inter_area
+        return (inter_area / union) if union > 0 else 0.0
+
+    def _parse_gt_objects(gt_item, img_h, img_w):
+        """解析分割 GT txt：class x1 y1 x2 y2 ...（归一化，>=3 点）→ 像素坐标对象列表。"""
+        gt_objects = []
+        for raw_line in _load_gt_content(gt_item).splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+
+            tokens = line.split()
+            if len(tokens) < 7:
+                continue
+
+            label_token = tokens[0]
+            if label_token.isdigit() or (label_token.startswith('-') and label_token[1:].isdigit()):
+                class_id = int(label_token)
+            else:
+                class_id = name_to_class_id.get(label_token)
+                if class_id is None:
+                    continue
+
+            try:
+                values = [float(token) for token in tokens[1:]]
+            except ValueError:
+                continue
+
+            if len(values) < 6 or len(values) % 2 != 0:
+                continue
+            n_points = len(values) // 2
+            if n_points < 3:
+                continue
+
+            points = np.asarray(
+                [[values[idx * 2] * img_w, values[idx * 2 + 1] * img_h] for idx in range(n_points)],
+                dtype=np.float32,
+            )
+            xs = points[:, 0]
+            ys = points[:, 1]
+            gt_objects.append({
+                'class_id': class_id,
+                'class_name': class_id_to_name.get(class_id, str(class_id)),
+                'box': np.array([float(xs.min()), float(ys.min()), float(xs.max()), float(ys.max())], dtype=np.float32),
+                'points': points,
+            })
+        return gt_objects
+
+    def _build_pred_objects(pred_item, img_h, img_w):
+        """提取 pred 实例（置信度过滤）与 masks 数据；返回 (objects, masks_data)。"""
+        result_item = _get_result_item(pred_item)
+        if result_item is None:
+            return [], None
+        masks_obj = getattr(result_item, 'masks', None)
+        boxes_obj = getattr(result_item, 'boxes', None)
+        if masks_obj is None or len(masks_obj) == 0:
+            return [], None
+
+        boxes_conf = _to_numpy(boxes_obj.conf) if boxes_obj is not None and hasattr(boxes_obj, 'conf') else None
+        boxes_cls = _to_numpy(boxes_obj.cls) if boxes_obj is not None and hasattr(boxes_obj, 'cls') else None
+        boxes_xyxy = _to_numpy(boxes_obj.xyxy) if boxes_obj is not None and hasattr(boxes_obj, 'xyxy') else None
+        masks_data = _to_numpy(masks_obj.data)
+
+        pred_objects = []
+        for obj_idx in range(masks_data.shape[0]):
+            if boxes_conf is not None and obj_idx < len(boxes_conf) and float(boxes_conf[obj_idx]) < BOX_SCORE_THR:
+                continue
+            class_id = int(boxes_cls[obj_idx]) if boxes_cls is not None and obj_idx < len(boxes_cls) else -1
+            if boxes_xyxy is not None and obj_idx < len(boxes_xyxy):
+                pred_box = boxes_xyxy[obj_idx]
+            else:
+                mask = cv2.resize(masks_data[obj_idx], (img_w, img_h), interpolation=cv2.INTER_NEAREST)
+                ys, xs = np.nonzero(mask)
+                if len(xs) == 0 or len(ys) == 0:
+                    continue
+                pred_box = np.array([float(xs.min()), float(ys.min()), float(xs.max()), float(ys.max())], dtype=np.float32)
+            pred_objects.append({
+                'index': obj_idx,
+                'class_id': class_id,
+                'class_name': class_id_to_name.get(class_id, str(class_id)),
+                'box': pred_box,
+            })
+        return pred_objects, masks_data
+
+    stats = {class_name: {'gt': 0, 'detected': 0} for class_name in class_order}
+    dice_by_class = {class_name: [] for class_name in class_order}
+    image_error_rows = []
+
+    total_items = min(len(gtFiles), len(predRet))
+    if len(gtFiles) != len(predRet):
+        print(f'[statistics_result_seg] gtFiles/predRet length mismatch: {len(gtFiles)} vs {len(predRet)}; using first {total_items} pairs.')
+
+    for idx in range(total_items):
+        gt_item = gtFiles[idx]
+        pred_item = predRet[idx]
+        result_item = _get_result_item(pred_item)
+
+        img_h, img_w = _get_image_shape(result_item, gt_item)
+        if img_h <= 0 or img_w <= 0:
+            print(f'[statistics_result_seg] skip sample {idx} because image size is unavailable.')
+            continue
+
+        gt_objects = _parse_gt_objects(gt_item, img_h, img_w)
+        if not gt_objects:
+            continue
+
+        pred_objects, masks_data = _build_pred_objects(pred_item, img_h, img_w)
+        if masks_data is None:
+            masks_data = np.zeros((0, 0, 0), dtype=np.float32)
+
+        # 渲染所有 pred masks 为原图尺寸二值图（索引与 masks_data 实例一致）
+        pred_masks = []
+        for obj_idx in range(masks_data.shape[0]):
+            mask = cv2.resize(masks_data[obj_idx], (img_w, img_h), interpolation=cv2.INTER_NEAREST)
+            pred_masks.append((mask > 0.5).astype(np.uint8))
+
+        used_pred_indices = set()
+        per_image_class_dice = {class_name: [] for class_name in class_order}
+
+        for gt_obj in gt_objects:
+            class_name = gt_obj['class_name']
+            if class_name not in stats:
+                continue
+
+            stats[class_name]['gt'] += 1
+
+            class_preds = [
+                pred_obj for pred_obj in pred_objects
+                if pred_obj['class_name'] == class_name and pred_obj['index'] not in used_pred_indices
+            ]
+            if not class_preds:
+                continue
+
+            best_pred = None
+            best_iou = -1.0
+            for pred_obj in class_preds:
+                iou = _bbox_iou(pred_obj['box'], gt_obj['box'])
+                if iou > best_iou:
+                    best_iou = iou
+                    best_pred = pred_obj
+
+            if best_pred is None or best_iou < 0.3:
+                continue
+
+            used_pred_indices.add(best_pred['index'])
+            stats[class_name]['detected'] += 1
+
+            gt_mask = np.zeros((img_h, img_w), dtype=np.uint8)
+            gt_poly = gt_obj['points'].astype(np.int32).reshape((-1, 1, 2))
+            cv2.fillPoly(gt_mask, [gt_poly], 1)
+
+            pred_mask = pred_masks[best_pred['index']]
+            gt_area = float(gt_mask.sum())
+            pred_area = float(pred_mask.sum())
+            if gt_area <= 0 and pred_area <= 0:
+                dice = 1.0
+            else:
+                inter_area = float((gt_mask & pred_mask).sum())
+                dice = (2.0 * inter_area) / (gt_area + pred_area) if (gt_area + pred_area) > 0 else 0.0
+            per_image_class_dice[class_name].append(dice)
+            dice_by_class[class_name].append(dice)
+
+        image_row = {'image': str(gt_item) if isinstance(gt_item, (str, Path)) else str(idx)}
+        for class_name in class_order:
+            class_dice = per_image_class_dice[class_name]
+            image_row[f'{class_name}_dice'] = float(np.mean(class_dice)) if class_dice else np.nan
+        image_error_rows.append(image_row)
+
+    if not any(values for values in dice_by_class.values()):
+        print('[statistics_result_seg] no valid dice values were collected.')
+        return
+
+    # 每类 Dice 直方图
+    for class_name in class_order:
+        dice_list = dice_by_class[class_name]
+        if not dice_list:
+            continue
+        dice_np = np.asarray(dice_list, dtype=np.float32)
+        mean_val = float(np.mean(dice_np))
+        median_val = float(np.median(dice_np))
+        plt.figure(figsize=(8, 5))
+        plt.hist(dice_np, bins=30, range=(0, 1), color='#4C72B0', alpha=0.85, edgecolor='white')
+        plt.axvline(mean_val, color='crimson', linestyle='--', linewidth=1.5, label=f'Mean: {mean_val:.4f}')
+        plt.axvline(median_val, color='#2CA02C', linestyle='-.', linewidth=1.5, label=f'Median: {median_val:.4f}')
+        plt.legend()
+        plt.title(f'{class_name} Dice Histogram (n={len(dice_np)})\nStd: {float(np.std(dice_np)):.4f}')
+        plt.xlabel('Dice')
+        plt.ylabel('Count')
+        plt.tight_layout()
+        plt.savefig(hist_dir / f'{class_name.lower()}_dice_hist.png', dpi=200)
+        plt.close()
+
+    # 合并直方图
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    flat_axes = np.asarray(axes).ravel()
+    for ax, class_name in zip(flat_axes, class_order):
+        dice_list = dice_by_class[class_name]
+        if dice_list:
+            mean_val = float(np.mean(dice_list))
+            ax.hist(dice_list, bins=30, range=(0, 1), color='#4C72B0', alpha=0.85, edgecolor='white')
+            ax.axvline(mean_val, color='crimson', linestyle='--', linewidth=1.5, label=f'Mean: {mean_val:.4f}')
+            ax.legend()
+            ax.set_title(f'{class_name} Dice (n={len(dice_list)})')
+        else:
+            ax.text(0.5, 0.5, 'No data', ha='center', va='center', fontsize=14)
+            ax.set_xticks([])
+            ax.set_yticks([])
+            ax.set_title(f'{class_name} Dice (n=0)')
+        ax.set_xlabel('Dice')
+        ax.set_ylabel('Count')
+        ax.set_xlim(0, 1)
+    for ax in flat_axes[len(class_order):]:
+        ax.axis('off')
+    fig.suptitle('Combined Dice Distribution', fontsize=16, fontweight='bold')
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    fig.savefig(hist_dir / 'combined.png', dpi=200)
+    plt.close(fig)
+
+    # 逐图逐类误差汇总
+    csv_path = hist_dir / 'image_error_summary.csv'
+    csv_columns = ['image'] + [f'{class_name}_dice' for class_name in class_order]
+    pd.DataFrame(image_error_rows, columns=csv_columns).to_csv(csv_path, index=False)
+
+    print('\n' + '=' * 68)
+    print(f"{'Class':<15} | {'GT':<8} | {'Detected':<10} | {'Recall':<8} | {'Mean Dice':<10}")
+    print('-' * 68)
+    for class_name in class_order:
+        stats_row = stats[class_name]
+        recall = (stats_row['detected'] / stats_row['gt'] * 100) if stats_row['gt'] > 0 else 0.0
+        mean_dice = float(np.mean(dice_by_class[class_name])) if dice_by_class[class_name] else float('nan')
+        print(f"{class_name:<15} | {stats_row['gt']:<8} | {stats_row['detected']:<10} | {recall:>6.2f}% | {mean_dice:<10.4f}")
+    print('=' * 68 + '\n')
+
+    # 最差 5 张（按平均 Dice 升序）
+    ranked = sorted(
+        (
+            row for row in image_error_rows
+            if any(isinstance(row.get(f'{cn}_dice'), float) and not np.isnan(row[f'{cn}_dice']) for cn in class_order)
+        ),
+        key=lambda r: float(np.nanmean([r[f'{cn}_dice'] for cn in class_order])),
+    )[:5]
+    if ranked:
+        print('\n' + '=' * 68)
+        print('Top 5 Images with Lowest Dice (worst):')
+        print('-' * 68)
+        for rank, row in enumerate(ranked, start=1):
+            mean_dice = float(np.nanmean([row[f'{cn}_dice'] for cn in class_order]))
+            print(f'{rank}. mean_dice={mean_dice:.4f}  path={row["image"]}')
+        print('=' * 68 + '\n')
+
+    print('-' * 50)
+    print(f'Image error summary saved to: {csv_path}')
+    print(f'Dice histograms saved to: {hist_dir}')
 
 
 class InferenceModel:

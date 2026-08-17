@@ -167,6 +167,56 @@ def trainYoloObb(workspace, labelName, epochs, batch_size,
     )
 
 
+def trainYoloSeg(workspace, labelName, epochs, batch_size,
+                 img_size, gpu, logName, workers, hflipRatio, vflipRatio, weights=None, modelSize='n'):
+    import yaml
+
+    workspace_path = _resolve_workspace(workspace)
+    yaml_path = workspace_path / 'Seg.yaml'
+    names = {int(v): str(k) for k, v in labelName.items()}
+    dataset_path = workspace_path / 'datasets'
+
+    if not yaml_path.exists():
+        data = {
+            'path': str(dataset_path),
+            'train': 'images/train',
+            'val': 'images/val',
+            'test': None,
+            'names': names,
+        }
+        with open(yaml_path, 'w', encoding='utf-8') as handle:
+            yaml.safe_dump(data, handle, sort_keys=False, allow_unicode=True)
+    else:
+        with open(yaml_path, 'r', encoding='utf-8') as handle:
+            data = yaml.safe_load(handle) or {}
+        changed = False
+        if data.get('names') != names:
+            data['names'] = names
+            changed = True
+        if data.get('path') != str(dataset_path):
+            data['path'] = str(dataset_path)
+            changed = True
+        if changed:
+            with open(yaml_path, 'w', encoding='utf-8') as handle:
+                yaml.safe_dump(data, handle, sort_keys=False, allow_unicode=True)
+
+    model = YOLO(weights or f'yolo26{modelSize}-seg.pt')
+    model.train(
+        data=str(yaml_path),
+        epochs=int(epochs),
+        imgsz=int(img_size),
+        batch=int(batch_size),
+        device=gpu,
+        flipud=vflipRatio,
+        fliplr=hflipRatio,
+        workers=workers,
+        name=logName,
+        project=str(workspace_path / 'runs' / 'seg'),
+        cache='ram',
+        close_mosaic=20,
+    )
+
+
 def trainHRNet(workspace, epochs, batch_size, img_size, gpu, logName):
     workspace_path = _resolve_workspace(workspace)
     script_dir = Path(__file__).resolve().parent

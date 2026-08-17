@@ -5,7 +5,7 @@ import io
 import json
 from pathlib import Path
 
-from app.constants import IMAGE_SUFFIXES, LabelUsage
+from app.constants import IMAGE_SUFFIXES, LabelUsage, current_model_task
 from app.controllers.base import TabController
 from app.label_scan import (
     LabelStats,
@@ -26,7 +26,13 @@ from app.qt_imports import (
 )
 from app.task_runner import run_thread_with_process_events
 from app.theme import label_table_combo_stylesheet, label_table_line_edit_stylesheet, message_box_stylesheet
-from s1_dataJson2Train import ConvertInfo, process_filesHRNet, process_filesYoloFeaturePoint, process_filesYoloObb
+from s1_dataJson2Train import (
+    ConvertInfo,
+    process_filesHRNet,
+    process_filesYoloFeaturePoint,
+    process_filesYoloObb,
+    process_filesYoloSeg,
+)
 
 # 数据已经标注好了，划分训练集和验证集，预览标签映射。将标注数据写入到yolo,hrnet格式
 class LabelDataPreviewController(TabController):
@@ -184,14 +190,17 @@ class LabelDataPreviewController(TabController):
             "test_files": None,
         }
 
-        radio_obb = getattr(self.window, "radioTaskObb", None)
-        use_obb = bool(radio_obb is not None and radio_obb.isChecked())
+        task = current_model_task(self.window)
+        use_obb = task == "obb"
+        use_seg = task == "seg"
 
         def _run_split_process():
             buffer = io.StringIO()
             try:
                 with contextlib.redirect_stdout(buffer), contextlib.redirect_stderr(buffer):
-                    if use_obb:
+                    if use_seg:
+                        train_files, val_files, test_files = process_filesYoloSeg(convert_info)
+                    elif use_obb:
                         train_files, val_files, test_files = process_filesYoloObb(convert_info)
                     else:
                         train_files, val_files, test_files = process_filesYoloFeaturePoint(convert_info)
@@ -204,7 +213,7 @@ class LabelDataPreviewController(TabController):
             finally:
                 result_holder["stdout"] = buffer.getvalue()
 
-        task_name = "obb" if use_obb else "关键点"
+        task_name = "分割" if use_seg else ("obb" if use_obb else "关键点")
         self.append_log(
             f"开始划分数据({task_name}): "
             f"Append={convert_info.Append}, TrainRatio={convert_info.TrainRatio}, "

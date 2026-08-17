@@ -28,4 +28,16 @@ class Split(str, Enum):
 class ModelKind(str, Enum):
     YOLO = "pose"
     OBB = "obb"
+    SEG = "seg"
     HRNET = "HRNet"
+
+
+def current_model_task(window) -> str:
+    """根据顶部任务单选按钮返回 'seg' | 'obb' | 'pose'（默认 pose）。"""
+    seg = getattr(window, "radioTaskSeg", None)
+    if seg is not None and seg.isChecked():
+        return "seg"
+    obb = getattr(window, "radioTaskObb", None)
+    if obb is not None and obb.isChecked():
+        return "obb"
+    return "pose"

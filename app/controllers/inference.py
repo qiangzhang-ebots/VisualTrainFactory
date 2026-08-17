@@ -5,7 +5,7 @@ import traceback
 from pathlib import Path
 
 from ImageView import ImageView
-from app.constants import IMAGE_SUFFIXES, LabelUsage, ModelKind, Split
+from app.constants import IMAGE_SUFFIXES, LabelUsage, ModelKind, Split, current_model_task
 from app.controllers.base import TabController
 from app.qt_imports import QAbstractItemView, QCheckBox, QLabel, QListWidget, QListWidgetItem, QVBoxLayout, QWidget
 from app.task_runner import run_thread_with_process_events
@@ -57,16 +57,13 @@ class InferenceController(TabController):
     def on_enter(self):
         self.sync_task_ui()
 
-    def _is_obb_task(self) -> bool:
-        radio_obb = getattr(self.window, "radioTaskObb", None)
-        return bool(radio_obb is not None and radio_obb.isChecked())
-
     def sync_task_ui(self):
-        is_obb = self._is_obb_task()
+        task = current_model_task(self.window)
+        is_pose = task == "pose"
         for widget_name in ("labelHrnetModel", "comboBoxHrnetModel", "btnExportHrnetOnnx"):
             widget = getattr(self.window, widget_name, None)
             if widget is not None:
-                widget.setEnabled(not is_obb)
+                widget.setEnabled(is_pose)
         self.refresh_model_lists()
 
     def on_folder_tree_changed(self, selected, deselected):
@@ -100,8 +97,8 @@ class InferenceController(TabController):
 
     def export_hrnet_onnx(self):
         try:
-            if self._is_obb_task():
-                self.append_log("当前任务为 OBB，HRNet 不可用。")
+            if current_model_task(self.window) != "pose":
+                self.append_log("当前任务不加载 HRNet（仅关键点任务可用）。")
                 return
 
             from s5_exportOnnx import exportHRNetOnnx
@@ -130,8 +127,8 @@ class InferenceController(TabController):
                 return
 
             if model_type == "hrnet":
-                if self._is_obb_task():
-                    self.append_log("当前任务为 OBB，HRNet 不可用。")
+                if current_model_task(self.window) != "pose":
+                    self.append_log("当前任务不加载 HRNet（仅关键点任务可用）。")
                     return
 
                 model_path = read_combo_data(self.window, "comboBoxHrnetModel")
@@ -222,7 +219,6 @@ class InferenceController(TabController):
         workspace = self.get_workspace()
         yolo_combo = getattr(self.window, "comboBoxYoloModel", None)
         hrnet_combo = getattr(self.window, "comboBoxHrnetModel", None)
-        is_obb = self._is_obb_task()
 
         try:
             if yolo_combo is not None:
@@ -235,13 +231,19 @@ class InferenceController(TabController):
         if workspace is None:
             return
 
-        yolo_kind = ModelKind.OBB if is_obb else ModelKind.YOLO
-        self._fill_model_combo(yolo_combo, workspace.model_runs(yolo_kind), include_none=False)
-        if is_obb:
-            if hrnet_combo is not None:
-                hrnet_combo.addItem("None", "")
+        task = current_model_task(self.window)
+        is_pose = task == "pose"
+        if task == "seg":
+            yolo_kind = ModelKind.SEG
+        elif task == "obb":
+            yolo_kind = ModelKind.OBB
         else:
+            yolo_kind = ModelKind.YOLO
+        self._fill_model_combo(yolo_combo, workspace.model_runs(yolo_kind), include_none=False)
+        if is_pose:
             self._fill_model_combo(hrnet_combo, workspace.model_runs(ModelKind.HRNET), include_none=True)
+        elif hrnet_combo is not None:
+            hrnet_combo.addItem("None", "")
 
     @staticmethod
     def _fill_model_combo(combo_box, root_path: Path, include_none: bool):
@@ -347,6 +349,11 @@ class InferenceController(TabController):
                     widget.setChecked(bool(label_text in saved_checks))
 
     def run_batch_inference(self):
+        task = current_model_task(self.window)
+        use_seg = task == "seg"
+        use_obb = task == "obb"
+        use_pose = task == "pose"
+
         label_map = self.window.label_data_preview_controller.get_label_id_mapping()
         if not label_map:
             self.append_log("请先扫描并填写标签ID映射！")
@@ -355,7 +362,7 @@ class InferenceController(TabController):
         class_names = {value: key for key, value in label_map.items()}
 
         try:
-            from s4_inference import InferenceModel, draw_results, save_result, statistics_result
+            from s4_inference import InferenceModel, draw_results, save_result, statistics_result, statistics_result_seg
         except Exception as exc:
             self.append_log(f"无法导入 s4_inference: {exc}")
             return
@@ -377,10 +384,9 @@ class InferenceController(TabController):
 
         yolo_model_path = read_combo_data(self.window, "comboBoxYoloModel")
         hrnet_model_path = read_combo_data(self.window, "comboBoxHrnetModel")
-        use_obb = self._is_obb_task()
 
         if not yolo_model_path:
-            runs_dir = "runs/obb" if use_obb else "runs/pose"
+            runs_dir = "runs/seg" if use_seg else ("runs/obb" if use_obb else "runs/pose")
             self.append_log(f"请在推理页选择一个 YOLO 模型（{runs_dir} 下的子目录）。")
             return
 
@@ -410,17 +416,17 @@ class InferenceController(TabController):
         def _run_batch():
             try:
                 weights_path = str(Path(yolo_model_path) / "weights" / "best.pt")
-                task_name = "YOLO OBB" if use_obb else "YOLO"
+                task_name = "YOLO 分割" if use_seg else ("YOLO OBB" if use_obb else "YOLO")
                 self.append_log(f"加载 {task_name} 模型: {weights_path}")
                 model.load_yolo_model(weights_path)
-                if (not use_obb) and hrnet_model_path:
+                if use_pose and hrnet_model_path:
                     try:
                         self.append_log(f"加载 HRNet 模型: {hrnet_model_path}")
                         model.load_hrnet_model(str(hrnet_model_path))
                     except Exception as exc:
                         self.append_log(f"加载 HRNet 失败，继续仅使用 YOLO: {exc}")
-                elif use_obb:
-                    self.append_log("OBB 任务跳过 HRNet。")
+                else:
+                    self.append_log("当前任务不加载 HRNet。")
 
                 images = [
                     path
@@ -502,12 +508,20 @@ class InferenceController(TabController):
         ):
             try:
                 self.append_log("开始统计误差...")
-                statistics_result(
-                    result_holder["gt_files"],
-                    result_holder["pred_ret"],
-                    class_names,
-                    str(base_ret_dir),
-                )
+                if task == "seg":
+                    statistics_result_seg(
+                        result_holder["gt_files"],
+                        result_holder["pred_ret"],
+                        class_names,
+                        str(base_ret_dir),
+                    )
+                else:
+                    statistics_result(
+                        result_holder["gt_files"],
+                        result_holder["pred_ret"],
+                        class_names,
+                        str(base_ret_dir),
+                    )
                 self.append_log("误差统计完成。")
                 hist_dir = Path(base_ret_dir) / "error_hist"
                 combined_png = hist_dir / "combined.png"

@@ -32,7 +32,7 @@ def _get_box_display_text(class_id, label_mapping_rows=None):
     return str(class_id_int)
 
 
-def load_yolo_labels(label_path):
+def load_yolo_labels(label_path, task=None):
     labels = []
     label_file = Path(label_path)
     if not label_file.exists():
@@ -47,6 +47,17 @@ def load_yolo_labels(label_path):
             try:
                 values = list(map(float, parts))
             except ValueError:
+                continue
+
+            # YOLO SEG: class x1 y1 x2 y2 x3 y3 ... xn yn (points count variable)
+            if task == "seg":
+                if len(values) < 7 or (len(values) - 1) % 2 != 0:
+                    continue
+                cls = int(values[0])
+                pts = list(zip(values[1::2], values[2::2]))
+                if len(pts) < 3:
+                    continue
+                labels.append(('seg', cls, pts))
                 continue
 
             # YOLO OBB: class x1 y1 x2 y2 x3 y3 x4 y4
@@ -73,7 +84,7 @@ def load_yolo_labels(label_path):
     return labels
 
 
-def draw_yolo_boxes(img, labels, color=(0, 255, 0), label_mapping_rows=None):
+def draw_yolo_boxes(img, labels, color=(0, 255, 0), label_mapping_rows=None, task=None):
     h, w = img.shape[:2]
     for label in labels:
         # Backward compatible with old 6-tuple format: (cls, x, y, w, h, keypoints)
@@ -84,6 +95,26 @@ def draw_yolo_boxes(img, labels, color=(0, 255, 0), label_mapping_rows=None):
             display_text = _get_box_display_text(cls, label_mapping_rows)
             pts = np.array(
                 [[int(px * w), int(py * h)] for px, py in corners],
+                dtype=np.int32,
+            )
+            cv2.polylines(img, [pts], isClosed=True, color=color, thickness=1)
+            text_x = int(min(pt[0] for pt in pts))
+            text_y = int(min(pt[1] for pt in pts))
+            cv2.putText(
+                img,
+                display_text,
+                (text_x, max(0, text_y - 5)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                color,
+                1,
+            )
+            continue
+        elif label[0] == 'seg':
+            _, cls, points = label
+            display_text = _get_box_display_text(cls, label_mapping_rows)
+            pts = np.array(
+                [[int(px * w), int(py * h)] for px, py in points],
                 dtype=np.int32,
             )
             cv2.polylines(img, [pts], isClosed=True, color=color, thickness=1)
@@ -132,7 +163,7 @@ def draw_yolo_boxes(img, labels, color=(0, 255, 0), label_mapping_rows=None):
     return img
 
 
-def visual_Yolo_trainData(img_path, txt_path, label_mapping_rows=None):
+def visual_Yolo_trainData(img_path, txt_path, label_mapping_rows=None, task=None):
     img_file = Path(img_path)
     if not img_file.exists():
         return None
@@ -141,9 +172,9 @@ def visual_Yolo_trainData(img_path, txt_path, label_mapping_rows=None):
     if img is None:
         return None
 
-    labels = load_yolo_labels(txt_path)
+    labels = load_yolo_labels(txt_path, task=task)
     if labels:
-        img = draw_yolo_boxes(img, labels, label_mapping_rows=label_mapping_rows)
+        img = draw_yolo_boxes(img, labels, label_mapping_rows=label_mapping_rows, task=task)
     return img
 
 

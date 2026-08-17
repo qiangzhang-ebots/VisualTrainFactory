@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ImageView import ImageView
-from app.constants import IMAGE_SUFFIXES, Split
+from app.constants import IMAGE_SUFFIXES, Split, current_model_task
 from app.controllers.base import TabController
 from s2_visualTrainData import visual_Yolo_trainData
 
@@ -113,6 +113,7 @@ class TrainDataVisualizationController(TabController):
             str(image_path),
             str(label_path),
             label_mapping_rows=label_mapping_rows,
+            task=current_model_task(self.window),
         )
 
         if self.window.image_view is not None:

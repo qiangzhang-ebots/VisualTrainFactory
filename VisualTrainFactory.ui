@@ -310,6 +310,16 @@ QStatusBar {
          </property>
         </widget>
        </item>
+       <item>
+        <widget class="QRadioButton" name="radioTaskSeg">
+         <property name="text">
+          <string>分割</string>
+         </property>
+         <property name="checked">
+          <bool>false</bool>
+         </property>
+        </widget>
+       </item>
       </layout>
      </widget>
     </item>
