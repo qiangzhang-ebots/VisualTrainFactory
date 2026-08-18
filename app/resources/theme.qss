@@ -22,3 +22,24 @@ QListWidget {
 QListWidget::item {
   margin-bottom: 4px;
 }
+QTabWidget#keypointTabWidget::pane {
+  border: none;
+  background-color: #0f1729;
+}
+QTabWidget#keypointTabWidget QStackedWidget {
+  background: transparent;
+}
+QPushButton#btnAddKeypointRow {
+  background-color: #2563eb;
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 14px;
+  font-size: 12px;
+}
+QPushButton#btnAddKeypointRow:hover {
+  background-color: #1d4ed8;
+}
+QPushButton#btnAddKeypointRow:pressed {
+  background-color: #1e40af;
+}

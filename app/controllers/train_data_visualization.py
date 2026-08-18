@@ -109,17 +109,53 @@ class TrainDataVisualizationController(TabController):
             if label_data_preview_controller is not None
             else None
         )
+
+        pose_format, keypoint_names = self._resolve_pose_format()
         visual_image = visual_Yolo_trainData(
             str(image_path),
             str(label_path),
             label_mapping_rows=label_mapping_rows,
             task=current_model_task(self.window),
+            pose_format=pose_format,
+            keypoint_names=keypoint_names,
         )
 
         if self.window.image_view is not None:
             self.window.image_view.SetImage(visual_image)
 
         self.update_progress()
+
+    def _resolve_pose_format(self):
+        """读取 datasets/pose_schema.json，判断是否为新格式（矩形=对象，散乱特征点=关键点）。
+
+        返回 (pose_format, keypoint_names)：
+          - 新格式: ('rectangle_point', [name1, name2, ...])（按 index 升序）
+          - 否则: (None, None)
+        """
+        workspace = self.get_workspace()
+        if workspace is None:
+            return None, None
+
+        schema_path = workspace.datasets / "pose_schema.json"
+        if not schema_path.exists():
+            return None, None
+
+        try:
+            import json
+
+            with schema_path.open("r", encoding="utf-8") as file:
+                schema = json.load(file)
+        except (OSError, ValueError):
+            return None, None
+
+        pose_format = schema.get("pose_format")
+        if pose_format != "rectangle_point":
+            return None, None
+
+        keypoints = schema.get("keypoints", [])
+        ordered = sorted(keypoints, key=lambda item: item.get("index", 0))
+        keypoint_names = [str(item.get("label", "")) for item in ordered]
+        return pose_format, keypoint_names
 
     def show_image(self, index):
         if not self.refresh_image_list():

@@ -17,6 +17,10 @@ class ConvertInfo:
 		self.JsonPath = './labeldata'
 		self.DatasetsDir = './datasets'
 		self.Seed = 42
+		# 姿态数据格式: 'rectangle_point'（新格式，矩形=对象，点=关键点）或 'legacy'（旧格式）
+		self.PoseFormat = 'legacy'
+		# 关键点标签 -> 槽位（0..N-1，与对象训练时ID一致，界面同样从 0 开始）
+		self.KeypointOrder = {}
 
 
 IMAGE_SUFFIXES = ('.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff')
@@ -307,6 +311,208 @@ def labelme2yolo(json_file, txt_file, img_w, img_h, convert_info):
 		file.write('\n'.join(lines))
 
 
+# ---------------------------------------------------------------------------
+# 新格式（rectangle_point）：矩形=对象，点=关键点
+# ---------------------------------------------------------------------------
+
+def _collect_object_rectangles(shapes, json_file, convert_info):
+	"""收集「用于训练」的 rectangle（跳过遮挡矩形），返回 [(label, rect)]。"""
+	occupied_labels = _get_occupied_labels(convert_info)
+	objects = []
+	for shape in shapes:
+		label_text = str(shape.get('label', ''))
+		if shape.get('shape_type', '') != 'rectangle':
+			continue
+		if label_text in occupied_labels:
+			continue
+		points = shape.get('points', [])
+		if len(points) != 2:
+			raise RuntimeError(f'训练矩形必须包含2个点: {json_file} 中的 shape {shape}')
+		objects.append((label_text, _normalize_rect(points)))
+	return objects
+
+
+def _collect_point_shapes(shapes, json_file, convert_info):
+	"""收集全部 point shape，返回 [(label, x, y)]。"""
+	points = []
+	for shape in shapes:
+		if shape.get('shape_type', '') != 'point':
+			continue
+		label_text = str(shape.get('label', ''))
+		raw_points = shape.get('points', [])
+		if len(raw_points) != 1:
+			raise RuntimeError(f'point 必须包含1个坐标点: {json_file} 中的 shape {shape}')
+		x, y = float(raw_points[0][0]), float(raw_points[0][1])
+		points.append((label_text, x, y))
+	return points
+
+
+def _assign_points_to_objects(objects, point_shapes, json_file, convert_info):
+	"""把关键点归属到包含它的训练矩形。
+
+	无归属（不在任何矩形内）或重叠归属（同时落在多个矩形内）→ 抛错。
+	返回 [{object_index: [(point_label, x, y), ...]}]。
+	"""
+	assignments = [[] for _ in objects]
+	for point_label, x, y in point_shapes:
+		containing = [index for index, (_, rect) in enumerate(objects) if _point_in_rect(x, y, rect)]
+		if not containing:
+			raise RuntimeError(
+				f'关键点 {point_label} 不属于任何训练矩形: {json_file}（坐标 ({x:.2f}, {y:.2f})）'
+			)
+		if len(containing) > 1:
+			raise RuntimeError(
+				f'关键点 {point_label} 同时落在多个训练矩形内（重叠归属）: {json_file}'
+			)
+		assignments[containing[0]].append((point_label, x, y))
+	return assignments
+
+
+def _assemble_keypoint_array(points_in_rect, occupied_rects, convert_info, json_file):
+	"""按关键点排序表组装定长 keypoints 数组。
+
+	填槽、缺槽置 (0, 0, 0)、遮挡点可见性置 0；无任何可见点 → 抛错。
+	返回 [(x, y, visible), ...]，长度 = NFP。
+	"""
+	keypoint_order = getattr(convert_info, 'KeypointOrder', None) or {}
+	nfp = getattr(convert_info, 'NFP', len(keypoint_order)) or len(keypoint_order)
+	if not keypoint_order:
+		raise RuntimeError(f'缺少关键点排序表(KeypointOrder): {json_file}')
+	array = [[0.0, 0.0, 0] for _ in range(nfp)]
+	seen_labels = set()
+	for point_label, x, y in points_in_rect:
+		if point_label in seen_labels:
+			raise RuntimeError(f'同一对象内重复出现关键点 {point_label}: {json_file}')
+		seen_labels.add(point_label)
+		if point_label not in keypoint_order:
+			raise RuntimeError(f'关键点 {point_label} 不在关键点排序表中: {json_file}')
+		slot_index = keypoint_order[point_label]
+		if not 0 <= slot_index < nfp:
+			raise RuntimeError(f'关键点 {point_label} 的槽位越界: {json_file}')
+		array[slot_index] = [float(x), float(y), _resolve_point_visibility(x, y, occupied_rects)]
+	if all(item[2] == 0 for item in array):
+		raise RuntimeError(f'训练矩形内没有任何可见关键点: {json_file}')
+	return array
+
+
+def _build_rect_bbox(rect):
+	"""由矩形生成 COCO bbox: [x, y, w, h]（像素）。"""
+	left, top, right, bottom = rect
+	return [
+		int(round(left)),
+		int(round(top)),
+		max(int(round(right - left)), 1),
+		max(int(round(bottom - top)), 1),
+	]
+
+
+def build_yolo_rect_pose_line(label, rect, keypoints, img_w, img_h):
+	"""新格式 YOLO 行: label cx cy w h kpx kpy v ...（bbox 直接取矩形，不扩展）。"""
+	left, top, right, bottom = rect
+	left = max(0.0, min(float(left), float(img_w)))
+	top = max(0.0, min(float(top), float(img_h)))
+	right = max(0.0, min(float(right), float(img_w)))
+	bottom = max(0.0, min(float(bottom), float(img_h)))
+	cx = (left + right) / 2 / img_w
+	cy = (top + bottom) / 2 / img_h
+	width = max(right - left, 1) / img_w
+	height = max(bottom - top, 1) / img_h
+
+	parts = [str(label), f'{cx:.6f}', f'{cy:.6f}', f'{width:.6f}', f'{height:.6f}']
+	for x, y, visible in keypoints:
+		visible = _to_yolo_visibility(visible)
+		if visible == 0:
+			x, y = 0, 0
+		parts.extend([f'{x / img_w:.6f}', f'{y / img_h:.6f}', str(visible)])
+	return ' '.join(parts)
+
+
+def _check_pose_format_shapes(shapes, json_file, convert_info):
+	"""模式与形状匹配：新格式禁止训练 polygon/line；旧格式禁止训练 rectangle。"""
+	occupied_labels = _get_occupied_labels(convert_info)
+	pose_format = getattr(convert_info, 'PoseFormat', 'legacy')
+	if pose_format == 'rectangle_point':
+		for shape in shapes:
+			label_text = str(shape.get('label', ''))
+			shape_type = shape.get('shape_type', '')
+			if shape_type in ('polygon', 'line') and label_text not in occupied_labels:
+				raise RuntimeError(
+					f'新格式(rectangle_point)不支持训练 polygon/line: {json_file} 中的 shape {shape}'
+				)
+	else:
+		for shape in shapes:
+			label_text = str(shape.get('label', ''))
+			shape_type = shape.get('shape_type', '')
+			if shape_type == 'rectangle' and label_text not in occupied_labels:
+				raise RuntimeError(
+					f'旧格式(legacy)不支持训练 rectangle: {json_file} 中的 shape {shape}'
+					f'（如需新格式请在标签处理页选择“新格式”）'
+				)
+
+
+def _build_rectangle_point_yolo_lines(data, img_w, img_h, convert_info, json_file):
+	"""新格式：生成 YOLO pose 行（不写文件，供转换与预检查共用）。"""
+	shapes = data.get('shapes', [])
+	_check_pose_format_shapes(shapes, json_file, convert_info)
+	objects = _collect_object_rectangles(shapes, json_file, convert_info)
+	point_shapes = _collect_point_shapes(shapes, json_file, convert_info)
+	assignments = _assign_points_to_objects(objects, point_shapes, json_file, convert_info)
+	occupied_rects = _collect_occupied_rectangles(shapes, json_file, _get_occupied_labels(convert_info))
+	label_map = _normalize_label_map(convert_info.Label2Int)
+
+	lines = []
+	for object_index, (label_text, rect) in enumerate(objects):
+		if label_text not in label_map:
+			raise RuntimeError(f'训练矩形类别 {label_text} 不在类别映射中: {json_file}')
+		label = label_map[label_text]
+		keypoints = _assemble_keypoint_array(assignments[object_index], occupied_rects, convert_info, json_file)
+		lines.append(build_yolo_rect_pose_line(label, rect, keypoints, img_w, img_h))
+	return lines
+
+
+def labelme2yolo_rectangle_point(json_file, txt_file, img_w, img_h, convert_info):
+	"""新格式（矩形=对象，点=关键点）YOLO 转换。"""
+	with open(json_file, 'r', encoding='utf-8') as file:
+		data = json.load(file)
+	lines = _build_rectangle_point_yolo_lines(data, img_w, img_h, convert_info, json_file)
+	with open(txt_file, 'w', encoding='utf-8') as file:
+		file.write('\n'.join(lines))
+
+
+def _shape_to_coco_annotation_rectangle_point(
+	label_text,
+	rect,
+	points_in_rect,
+	occupied_rects,
+	image_id,
+	annotation_id,
+	image_width,
+	image_height,
+	convert_info,
+	json_file,
+):
+	"""新格式：一条 annotation 对应一个训练 rectangle，num_keypoints=可见点数，keypoints 定长 NFP。"""
+	label_id = _resolve_category_id(label_text, convert_info)
+	keypoints = _assemble_keypoint_array(points_in_rect, occupied_rects, convert_info, json_file)
+	visible_count = sum(1 for _, _, visible in keypoints if visible != 0)
+	bbox = _build_rect_bbox(rect)
+
+	flattened_keypoints = []
+	for x, y, visible in keypoints:
+		flattened_keypoints.extend([int(round(x)), int(round(y)), int(visible)])
+
+	return {
+		'id': annotation_id,
+		'image_id': image_id,
+		'category_id': label_id,
+		'bbox': bbox,
+		'area': bbox[2] * bbox[3],
+		'iscrowd': 0,
+		'num_keypoints': visible_count,
+		'keypoints': flattened_keypoints,
+	}
+
+
 def build_yolo_obb_line(label, points, img_w, img_h):
 	parts = [f'{label}']
 	for x, y in points:
@@ -407,7 +613,7 @@ def _build_coco_categories(convert_info, files, occupied_labels):
 	return [{'id': label_id, 'name': str(label_id), 'supercategory': 'shape'} for label_id in sorted(label_ids)]
 
 
-def _process_files_yolo(convert_info: ConvertInfo, label_converter):
+def _process_files_yolo(convert_info: ConvertInfo, label_converter, split_plan=None):
 	json_root = _resolve_path(convert_info.JsonPath)
 	datasets_dir = _resolve_path(convert_info.DatasetsDir)
 	if not json_root.exists():
@@ -415,8 +621,10 @@ def _process_files_yolo(convert_info: ConvertInfo, label_converter):
 
 	all_files = _collect_json_files(json_root)
 	_prepare_output_dirs(datasets_dir, convert_info)
-	existing_stems = _collect_existing_stems(datasets_dir) if convert_info.Append else set()
-	train_files, val_files, test_files = _split_file_list(all_files, convert_info, existing_stems)
+	if split_plan is None:
+		existing_stems = _collect_existing_stems(datasets_dir) if convert_info.Append else set()
+		split_plan = _split_file_list(all_files, convert_info, existing_stems)
+	train_files, val_files, test_files = split_plan
 
 	for split in ('train', 'val', 'test'):
 		(datasets_dir / 'images' / split).mkdir(parents=True, exist_ok=True)
@@ -442,12 +650,14 @@ def _process_files_yolo(convert_info: ConvertInfo, label_converter):
 	return train_files, val_files, test_files
 
 
-def process_filesYoloFeaturePoint(convert_info: ConvertInfo):
-	return _process_files_yolo(convert_info, labelme2yolo)
+def process_filesYoloFeaturePoint(convert_info: ConvertInfo, split_plan=None):
+	pose_format = getattr(convert_info, 'PoseFormat', 'legacy')
+	converter = labelme2yolo_rectangle_point if pose_format == 'rectangle_point' else labelme2yolo
+	return _process_files_yolo(convert_info, converter, split_plan)
 
 
-def process_filesYoloObb(convert_info: ConvertInfo):
-	return _process_files_yolo(convert_info, labelme2yolo_obb)
+def process_filesYoloObb(convert_info: ConvertInfo, split_plan=None):
+	return _process_files_yolo(convert_info, labelme2yolo_obb, split_plan)
 
 
 def build_yolo_seg_line(label, points, img_w, img_h):
@@ -492,8 +702,8 @@ def labelme2yolo_seg(json_file, txt_file, img_w, img_h, convert_info):
 		file.write('\n'.join(lines))
 
 
-def process_filesYoloSeg(convert_info: ConvertInfo):
-	return _process_files_yolo(convert_info, labelme2yolo_seg)
+def process_filesYoloSeg(convert_info: ConvertInfo, split_plan=None):
+	return _process_files_yolo(convert_info, labelme2yolo_seg, split_plan)
 
 
 def _shape_to_coco_annotation(shape, json_file, image_id, annotation_id, image_width, image_height, convert_info, occupied_rects):
@@ -538,7 +748,7 @@ def _shape_to_coco_annotation(shape, json_file, image_id, annotation_id, image_w
 	}
 
 
-def process_filesHRNet(convert_info: ConvertInfo):
+def process_filesHRNet(convert_info: ConvertInfo, split_plan=None):
 	json_root = _resolve_path(convert_info.JsonPath)
 	datasets_dir = _resolve_path(convert_info.DatasetsDir)
 	if not json_root.exists():
@@ -546,10 +756,13 @@ def process_filesHRNet(convert_info: ConvertInfo):
 
 	all_files = _collect_json_files(json_root)
 	datasets_dir.mkdir(parents=True, exist_ok=True)
-	existing_stems = _collect_existing_stems(datasets_dir) if convert_info.Append else set()
-	train_files, val_files, test_files = _split_file_list(all_files, convert_info, existing_stems)
+	if split_plan is None:
+		existing_stems = _collect_existing_stems(datasets_dir) if convert_info.Append else set()
+		split_plan = _split_file_list(all_files, convert_info, existing_stems)
+	train_files, val_files, test_files = split_plan
 
 	occupied_labels = _get_occupied_labels(convert_info)
+	pose_format = getattr(convert_info, 'PoseFormat', 'legacy')
 	categories = _build_coco_categories(convert_info, train_files + val_files + test_files, occupied_labels)
 
 	for split_name, file_list in (('train', train_files), ('val', val_files), ('test', test_files)):
@@ -581,27 +794,117 @@ def process_filesHRNet(convert_info: ConvertInfo):
 				}
 			)
 
-			for shape in data.get('shapes', []):
-				annotation = _shape_to_coco_annotation(
-					shape,
-					json_file,
-					image_id,
-					annotation_id,
-					image_width,
-					image_height,
-					convert_info,
-					occupied_rects,
-				)
-				if annotation is None:
-					continue
-				dataset['annotations'].append(annotation)
-				annotation_id += 1
+			if pose_format == 'rectangle_point':
+				_check_pose_format_shapes(data.get('shapes', []), json_file, convert_info)
+				objects = _collect_object_rectangles(data.get('shapes', []), json_file, convert_info)
+				point_shapes = _collect_point_shapes(data.get('shapes', []), json_file, convert_info)
+				assignments = _assign_points_to_objects(objects, point_shapes, json_file, convert_info)
+				for object_index, (label_text, rect) in enumerate(objects):
+					annotation = _shape_to_coco_annotation_rectangle_point(
+						label_text,
+						rect,
+						assignments[object_index],
+						occupied_rects,
+						image_id,
+						annotation_id,
+						image_width,
+						image_height,
+						convert_info,
+						json_file,
+					)
+					dataset['annotations'].append(annotation)
+					annotation_id += 1
+			else:
+				for shape in data.get('shapes', []):
+					annotation = _shape_to_coco_annotation(
+						shape,
+						json_file,
+						image_id,
+						annotation_id,
+						image_width,
+						image_height,
+						convert_info,
+						occupied_rects,
+					)
+					if annotation is None:
+						continue
+					dataset['annotations'].append(annotation)
+					annotation_id += 1
 
 		output_file = datasets_dir / f'{split_name}_keypoints.json'
 		with open(output_file, 'w', encoding='utf-8') as file:
 			json.dump(dataset, file, ensure_ascii=False, indent=2)
 
 	return train_files, val_files, test_files
+
+
+def compute_split_plan(convert_info: ConvertInfo):
+	"""生成一次 train/val/test 划分（不写文件），供 YOLO 与 HRNet 共用。"""
+	json_root = _resolve_path(convert_info.JsonPath)
+	if not json_root.exists():
+		raise FileNotFoundError(f'标注目录不存在: {json_root}')
+	all_files = _collect_json_files(json_root)
+	datasets_dir = _resolve_path(convert_info.DatasetsDir)
+	existing_stems = _collect_existing_stems(datasets_dir) if convert_info.Append else set()
+	return _split_file_list(all_files, convert_info, existing_stems)
+
+
+def precheck_convert(convert_info: ConvertInfo, split_plan):
+	"""写入/删除 datasets 之前完成全部校验；任意错误抛 RuntimeError，不半更新。"""
+	json_root = _resolve_path(convert_info.JsonPath)
+	all_selected = []
+	for file_list in split_plan:
+		all_selected.extend(file_list)
+
+	# 输出文件名冲突
+	seen_stems = {}
+	for json_name in all_selected:
+		stem = Path(json_name).stem
+		if stem in seen_stems:
+			raise RuntimeError(
+				f'输出文件名冲突: {seen_stems[stem]} 与 {json_name} 都会生成同名文件 {stem}.txt/.jpg'
+			)
+		seen_stems[stem] = json_name
+
+	pose_format = getattr(convert_info, 'PoseFormat', 'legacy')
+	for json_name in all_selected:
+		json_file = json_root / json_name
+		try:
+			with open(json_file, 'r', encoding='utf-8') as file:
+				data = json.load(file)
+		except (OSError, json.JSONDecodeError) as exc:
+			raise RuntimeError(f'JSON 解析失败: {json_file} ({exc})') from exc
+
+		# 图片必须存在（转换时会复制）
+		_find_image_file(json_root, json_name, data)
+
+		if pose_format == 'rectangle_point':
+			# 完整 dry-run：模式匹配、对象归属、序号、可见点、类别 ID 一次校验
+			_build_rectangle_point_yolo_lines(data, 1, 1, convert_info, json_file)
+		elif pose_format == 'legacy':
+			_check_pose_format_shapes(data.get('shapes', []), json_file, convert_info)
+
+
+def write_pose_schema(convert_info: ConvertInfo):
+	"""新格式校验通过后生成 datasets/pose_schema.json。"""
+	datasets_dir = _resolve_path(convert_info.DatasetsDir)
+	schema = {
+		'version': 1,
+		'pose_format': convert_info.PoseFormat,
+		'nfp': convert_info.NFP,
+		'keypoints': [
+			{'label': label, 'index': slot_index}
+			for label, slot_index in sorted(convert_info.KeypointOrder.items(), key=lambda item: item[1])
+		],
+		'classes': [
+			{'label': label, 'id': label_id}
+			for label, label_id in sorted(convert_info.Label2Int.items(), key=lambda item: item[1])
+		],
+	}
+	output_file = datasets_dir / 'pose_schema.json'
+	with open(output_file, 'w', encoding='utf-8') as file:
+		json.dump(schema, file, ensure_ascii=False, indent=2)
+	print(f'已生成: {output_file}')
 
 
 if __name__ == '__main__':

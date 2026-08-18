@@ -25,11 +25,13 @@ from PyQt5.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QMainWindow,
+    QPushButton,
     QRadioButton,
     QScrollArea,
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )

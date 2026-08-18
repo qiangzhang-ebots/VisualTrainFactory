@@ -362,7 +362,13 @@ class InferenceController(TabController):
         class_names = {value: key for key, value in label_map.items()}
 
         try:
-            from s4_inference import InferenceModel, draw_results, save_result, statistics_result, statistics_result_seg
+            from s4_inference import (
+                InferenceModel,
+                draw_results,
+                save_result,
+                statistics_result,
+                statistics_result_seg,
+            )
         except Exception as exc:
             self.append_log(f"无法导入 s4_inference: {exc}")
             return
@@ -404,6 +410,13 @@ class InferenceController(TabController):
         save_err_enabled = read_bool(self.window, "checkBoxSaveError")
         normalize_enabled = read_bool(self.window, "checkBoxNormalizeImage")
         part_ids = self.get_save_part_label_ids() if save_part_json_enabled else set()
+
+        pose_format = None
+        keypoint_names = None
+        if use_pose:
+            from s4_inference import _resolve_pose_format
+
+            pose_format, keypoint_names = _resolve_pose_format(workspace.root)
 
         model = InferenceModel()
         result_holder = {
@@ -453,7 +466,8 @@ class InferenceController(TabController):
                         if save_json_enabled:
                             try:
                                 save_result(
-                                    str(img_path), img_path.name, ret, str(json_path), class_names=class_names
+                                    str(img_path), img_path.name, ret, str(json_path), class_names=class_names,
+                                    pose_format=pose_format, keypoint_names=keypoint_names,
                                 )
                             except Exception:
                                 pass
@@ -467,6 +481,8 @@ class InferenceController(TabController):
                                     str(json_path),
                                     class_names=class_names,
                                     part_labels=part_ids,
+                                    pose_format=pose_format,
+                                    keypoint_names=keypoint_names,
                                 )
                             except Exception:
                                 pass

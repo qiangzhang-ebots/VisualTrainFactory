@@ -71,6 +71,36 @@ class TrainController(TabController):
 
             weights_edit.setText(current)
 
+    def _read_pose_schema_kpt(self):
+        """读取 datasets/pose_schema.json 中的关键点数量与名称（新格式）。
+
+        返回 (kptShape, kptNames)；非新格式或无 schema 时返回 (None, None)。
+        """
+        workspace = self.get_workspace()
+        if workspace is None:
+            return None, None
+
+        schema_path = workspace.datasets / "pose_schema.json"
+        if not schema_path.exists():
+            return None, None
+
+        try:
+            import json
+
+            with schema_path.open("r", encoding="utf-8") as file:
+                schema = json.load(file)
+        except (OSError, ValueError):
+            return None, None
+
+        if schema.get("pose_format") != "rectangle_point":
+            return None, None
+
+        keypoints = schema.get("keypoints", [])
+        nfp = schema.get("nfp") or len(keypoints)
+        ordered = sorted(keypoints, key=lambda item: item.get("index", 0))
+        names = [str(item.get("label", f"p{i + 1}")) for i, item in enumerate(ordered)]
+        return [nfp, 3], names
+
     def run_yolo_train(self):
         try:
             task = current_model_task(self.window)
@@ -97,6 +127,9 @@ class TrainController(TabController):
             weights = read_text(self.window, "lineEditYoloWeights", default="") or None
             model_size = self._get_yolo_model_size()
             log_name = _get_log_name()
+
+            # 新格式：从 pose_schema.json 读取真实关键点数量/名称，写入 Pose.yaml
+            kpt_shape, kpt_names = self._read_pose_schema_kpt()
 
             if task == "seg":
                 self.append_log(f"开始 YOLO 分割训练 (模型大小: {model_size})...")
@@ -147,6 +180,8 @@ class TrainController(TabController):
                     vflipRatio=vflip_ratio,
                     weights=weights,
                     modelSize=model_size,
+                    kptShape=kpt_shape,
+                    kptNames=kpt_names,
                 )
                 self.append_log("YOLO训练已完成。")
         except Exception as exc:

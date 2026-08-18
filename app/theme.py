@@ -115,6 +115,56 @@ def label_table_line_edit_stylesheet() -> str:
     )
 
 
+def keypoint_spin_stylesheet() -> str:
+    return (
+        "QSpinBox {"
+        "  background-color: #0b1220;"
+        "  color: #f8fafc;"
+        "  border: 1px solid #475569;"
+        "  border-radius: 4px;"
+        "  padding: 2px 6px;"
+        "}"
+        "QSpinBox:focus {"
+        "  border: 1px solid #60a5fa;"
+        "}"
+        "QSpinBox::up-button, QSpinBox::down-button {"
+        "  width: 16px;"
+        "  background: #1e293b;"
+        "  border: none;"
+        "  border-radius: 2px;"
+        "}"
+        "QSpinBox::up-button:hover, QSpinBox::down-button:hover {"
+        "  background: #334155;"
+        "}"
+        "QSpinBox::up-arrow, QSpinBox::down-arrow {"
+        "  width: 8px;"
+        "  height: 5px;"
+        "  background: #f8fafc;"
+        "}"
+    )
+
+
+def label_table_stylesheet() -> str:
+    return (
+        "QTableWidget {"
+        "  background-color: #0f172a;"
+        "  color: #f8fafc;"
+        "  gridline-color: #334155;"
+        "  alternate-background-color: #111827;"
+        "}"
+        "QHeaderView::section {"
+        "  background-color: #1e293b;"
+        "  color: #f8fafc;"
+        "  border: 1px solid #334155;"
+        "  padding: 4px;"
+        "}"
+        "QTableWidget::item:selected {"
+        "  background: #2563eb;"
+        "  color: #ffffff;"
+        "}"
+    )
+
+
 def message_box_stylesheet() -> str:
     return (
         "QMessageBox { background-color: #1e293b; color: #f8fafc; }"

@@ -13,7 +13,7 @@ from HRNetHelper import DEFAULT_DECODER, build_config, inference_topdown, init_m
 
 
 BOX_SCORE_THR = 0.5
-KEYPOINT_DRAW_THR = 0.3
+KEYPOINT_DRAW_THR = 0.5
 
 # CLASS_ALIAS = {
 #     0: 'FPC',
@@ -278,7 +278,32 @@ def draw_results(image: Union[str, Path, np.ndarray], ret: Sequence[Any], class_
     return vis_img
 
 
-def save_result(image: Union[str, Path, np.ndarray, None], imgName: str, ret: Sequence[Any], save_path: Union[str, Path], class_names: Optional[Dict[int, str]] = None, part_labels: Optional[Set[int]] = None) -> None:
+def _resolve_pose_format(workspace_root):
+    """读取 datasets/pose_schema.json，判断是否为「矩形=对象、散乱特征点=关键点」新格式。
+
+    返回 (pose_format, keypoint_names)：
+      - 新格式: ('rectangle_point', [name1, name2, ...])（按 index 升序）
+      - 否则: (None, None)
+    """
+    if workspace_root is None:
+        return None, None
+    schema_path = Path(workspace_root) / "datasets" / "pose_schema.json"
+    if not schema_path.exists():
+        return None, None
+    try:
+        with schema_path.open("r", encoding="utf-8") as file:
+            schema = json.load(file)
+    except (OSError, ValueError):
+        return None, None
+    if schema.get("pose_format") != "rectangle_point":
+        return None, None
+    keypoints = schema.get("keypoints", [])
+    ordered = sorted(keypoints, key=lambda item: item.get("index", 0))
+    keypoint_names = [str(item.get("label", "")) for item in ordered]
+    return "rectangle_point", keypoint_names
+
+
+def save_result(image: Union[str, Path, np.ndarray, None], imgName: str, ret: Sequence[Any], save_path: Union[str, Path], class_names: Optional[Dict[int, str]] = None, part_labels: Optional[Set[int]] = None, pose_format: Optional[str] = None, keypoint_names: Optional[Sequence[str]] = None) -> None:
     save_path = Path(save_path)
     save_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -379,6 +404,12 @@ def save_result(image: Union[str, Path, np.ndarray, None], imgName: str, ret: Se
                     boxes_conf = _to_numpy(boxes_obj.conf) if hasattr(boxes_obj, 'conf') else None
                     boxes_cls = _to_numpy(boxes_obj.cls) if hasattr(boxes_obj, 'cls') else None
                     keypoints_data = _to_numpy(keypoints_obj.data)
+                    boxes_xyxy = _to_numpy(boxes_obj.xyxy) if hasattr(boxes_obj, 'xyxy') else None
+                    # 取每个关键点的 confidence，用于过滤低置信度点
+                    try:
+                        keypoint_scores = _to_numpy(keypoints_obj.conf) if keypoints_obj.conf is not None else None
+                    except Exception:
+                        keypoint_scores = keypoints_data[:, :, 2] if keypoints_data.ndim == 3 and keypoints_data.shape[-1] >= 3 else None
 
                     for obj_idx in range(keypoints_data.shape[0]):
                         if boxes_conf is not None and obj_idx < len(boxes_conf) and float(boxes_conf[obj_idx]) < BOX_SCORE_THR:
@@ -389,13 +420,44 @@ def save_result(image: Union[str, Path, np.ndarray, None], imgName: str, ret: Se
                         if class_id not in mapping:
                             continue
 
-                        json_data['shapes'].append({
-                            'label': mapping[class_id],
-                            'points': [[float(x), float(y)] for x, y, *_ in keypoints_data[obj_idx]],
-                            'group_id': None,
-                            'shape_type': 'polygon',
-                            'flags': {},
-                        })
+                        if pose_format == 'rectangle_point':
+                            # 新格式：每个散乱特征点用独立 point shape 表示，label 为对应关键点名称
+                            for kpt_idx, (x, y, *_rest) in enumerate(keypoints_data[obj_idx]):
+                                score = 1.0
+                                if keypoint_scores is not None and obj_idx < len(keypoint_scores) and kpt_idx < len(keypoint_scores[obj_idx]):
+                                    score = float(keypoint_scores[obj_idx][kpt_idx])
+                                if score < KEYPOINT_DRAW_THR:
+                                    continue
+                                kpt_label = mapping[class_id]
+                                if keypoint_names is not None and kpt_idx < len(keypoint_names):
+                                    kpt_label = keypoint_names[kpt_idx]
+                                json_data['shapes'].append({
+                                    'label': kpt_label,
+                                    'points': [[float(x), float(y)]],
+                                    'group_id': None,
+                                    'shape_type': 'point',
+                                    'flags': {},
+                                })
+
+                            # 矩形=对象，作为独立 rectangle shape 导出
+                            if boxes_xyxy is not None and obj_idx < len(boxes_xyxy):
+                                x1, y1, x2, y2 = map(float, boxes_xyxy[obj_idx][:4])
+                                json_data['shapes'].append({
+                                    'label': mapping[class_id],
+                                    'points': [[x1, y1], [x2, y2]],
+                                    'group_id': None,
+                                    'shape_type': 'rectangle',
+                                    'flags': {},
+                                })
+                        else:
+                            # 旧 pose 格式：关键点连成一个 polygon
+                            json_data['shapes'].append({
+                                'label': mapping[class_id],
+                                'points': [[float(x), float(y)] for x, y, *_ in keypoints_data[obj_idx]],
+                                'group_id': None,
+                                'shape_type': 'polygon',
+                                'flags': {},
+                            })
 
     with save_path.open('w', encoding='utf-8') as f:
         json.dump(json_data, f, ensure_ascii=False, indent=2)

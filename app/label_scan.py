@@ -203,3 +203,53 @@ def detect_polygon_anomalies(
                 f"当前点数={record['points']}, 文件={target_text}"
             )
     return anomaly_logs
+
+
+def collect_label_shapes(payload) -> List[Tuple[str, str]]:
+    """收集所有 shape 的 (label, shape_type) 对（递归容错，与 extract_json_labels 一致）。
+
+    返回 [(label, shape_type), ...]，shape_type 为空字符串表示该 shape 未声明类型。
+    """
+    result: List[Tuple[str, str]] = []
+    label_keys = ("label", "labels", "class", "class_name", "category", "category_name", "name")
+    shape_type_keys = ("shape_type", "type", "geometry", "geometry_type")
+    stack = [payload]
+    while stack:
+        current = stack.pop()
+        if isinstance(current, dict):
+            label_text = ""
+            for key in label_keys:
+                value = current.get(key)
+                if isinstance(value, str) and value.strip():
+                    label_text = value.strip()
+                    break
+            shape_type = ""
+            for key in shape_type_keys:
+                value = current.get(key)
+                if isinstance(value, str) and value.strip():
+                    shape_type = value.strip().lower()
+                    break
+            if label_text:
+                result.append((label_text, shape_type))
+            stack.extend(value for value in current.values() if isinstance(value, (dict, list)))
+        elif isinstance(current, list):
+            stack.extend(item for item in current if isinstance(item, (dict, list)))
+    return result
+
+
+def detect_rectangle_labels(payload) -> Set[str]:
+    """检测全部 rectangle 标签（去重，含遮挡矩形标签）。"""
+    return {
+        label
+        for label, shape_type in collect_label_shapes(payload)
+        if shape_type == "rectangle"
+    }
+
+
+def collect_point_labels(payload) -> Set[str]:
+    """收集全部 point 标签（去重）。"""
+    return {
+        label
+        for label, shape_type in collect_label_shapes(payload)
+        if shape_type == "point"
+    }

@@ -64,13 +64,63 @@ def _parse_hrnet_worker_args(argv=None):
 is_torchrun_worker = os.environ.get('HRNET_DIST_LAUNCHED') == '1' and os.environ.get('LOCAL_RANK') is not None
 
 
-def trainYolo(workspace, labelName, epochs, batch_size, 
-              img_size, gpu, logName, workers, hflipRatio, vflipRatio, weights=None, modelSize='n'):
+def _read_pose_schema_kpt(workspace_path):
+    """读取 datasets/pose_schema.json 中的真实关键点数量与名称（新格式）。
+
+    返回 (nfp, [name, ...])；非新格式或无 schema 时返回 (None, None)。
+    """
+    schema_path = Path(workspace_path) / 'datasets' / 'pose_schema.json'
+    if not schema_path.exists():
+        return None, None
+    try:
+        import json
+
+        with schema_path.open('r', encoding='utf-8') as handle:
+            schema = json.load(handle)
+    except (OSError, ValueError):
+        return None, None
+
+    if schema.get('pose_format') != 'rectangle_point':
+        return None, None
+
+    keypoints = schema.get('keypoints', [])
+    nfp = schema.get('nfp') or len(keypoints)
+    ordered = sorted(keypoints, key=lambda item: item.get('index', 0))
+    names = [str(item.get('label', f'p{i + 1}')) for i, item in enumerate(ordered)]
+    return nfp, names
+
+
+def trainYolo(workspace, labelName, epochs, batch_size,
+              img_size, gpu, logName, workers, hflipRatio, vflipRatio, weights=None, modelSize='n',
+              kptShape=None, kptNames=None):
     import yaml
 
     workspace_path = _resolve_workspace(workspace)
     script_dir = Path(__file__).resolve().parent
     yaml_path = workspace_path / 'Pose.yaml'
+
+    # 关键点数量与名称：优先用调用方传入（来自新格式 schema），其次回退到默认 4 点
+    if kptShape is None or kptNames is None:
+        schema_nfp, schema_names = _read_pose_schema_kpt(workspace_path)
+        if schema_nfp is not None:
+            if kptShape is None:
+                kptShape = [schema_nfp, 3]
+            if kptNames is None:
+                kptNames = schema_names
+
+    if kptShape is None:
+        kptShape = [4, 3]
+    if kptNames is None:
+        nfp = kptShape[0]
+        kptNames = [f'p{i + 1}' for i in range(nfp)]
+    nfp = kptShape[0]
+    # 新格式（rectangle_point）：flip_idx 不反转，保持 identity
+    # 老格式（默认 4 点）：沿用 p1<->p2, p3<->p4 的左右配对反转
+    if schema_nfp is not None:
+        flip_idx = [i for i in range(nfp)]
+    else:
+        flip_idx = [1, 0, 3, 2] if nfp == 4 else [i for i in range(nfp)]
+
     if not yaml_path.exists():
         # 自动创建Pose.yaml，内容根据labelName同步names字段
         data = {
@@ -78,19 +128,32 @@ def trainYolo(workspace, labelName, epochs, batch_size,
             'train': 'images/train',
             'val': 'images/val',
             'test': None,
-            'kpt_shape': [4, 3],
-            'flip_idx': [1, 0, 3, 2],
+            'kpt_shape': kptShape,
+            'flip_idx': flip_idx,
             'names': {int(v): str(k) for k, v in labelName.items()},
-            'kpt_names': {0: ['p1', 'p2', 'p3', 'p4']},
+            'kpt_names': {0: kptNames},
         }
         with open(yaml_path, 'w', encoding='utf-8') as handle:
             yaml.safe_dump(data, handle, sort_keys=False, allow_unicode=True)
     else:
         with open(yaml_path, 'r', encoding='utf-8') as handle:
             data = yaml.safe_load(handle) or {}
+        changed = False
         # names字段自动同步labelName
         if data.get('names') != {int(v): str(k) for k, v in labelName.items()}:
             data['names'] = {int(v): str(k) for k, v in labelName.items()}
+            changed = True
+        # kpt_shape 与 kpt_names 自动同步（新格式关键点数量/名称）
+        if data.get('kpt_shape') != kptShape:
+            data['kpt_shape'] = kptShape
+            changed = True
+        if data.get('kpt_names') != {0: kptNames}:
+            data['kpt_names'] = {0: kptNames}
+            changed = True
+        if data.get('flip_idx') != flip_idx:
+            data['flip_idx'] = flip_idx
+            changed = True
+        if changed:
             with open(yaml_path, 'w', encoding='utf-8') as handle:
                 yaml.safe_dump(data, handle, sort_keys=False, allow_unicode=True)
 
@@ -221,6 +284,15 @@ def trainHRNet(workspace, epochs, batch_size, img_size, gpu, logName):
     workspace_path = _resolve_workspace(workspace)
     script_dir = Path(__file__).resolve().parent
     dataset_root = workspace_path / 'datasets'
+
+    # 关键点名称：新格式优先使用 pose_schema.json 的真实名称，否则回退默认 4 点
+    schema_nfp, schema_names = _read_pose_schema_kpt(workspace_path)
+    if schema_names:
+        keypoint_names = tuple(schema_names)
+        nfp = len(keypoint_names)
+    else:
+        keypoint_names = ('p1', 'p2', 'p3', 'p4')
+        nfp = 4
     train_ann = dataset_root / 'train_keypoints.json'
     val_ann = dataset_root / 'val_keypoints.json'
     work_dir = workspace_path / 'runs' / 'HRNet' / logName
@@ -280,17 +352,23 @@ def trainHRNet(workspace, epochs, batch_size, img_size, gpu, logName):
     bbox_scale_range = (0.8, 1.2)
     pretrained_ckpt = 'https://download.openmmlab.com/mmpose/pretrain_models/hrnet_w48-8ef0771d.pth'
 
-    keypoint_names = ('p1', 'p2', 'p3', 'p4')
-    skeleton = ((0, 1), (1, 2), (2, 3), (3, 0))
-    keypoint_colors = ([255, 80, 80], [80, 200, 255], [255, 200, 80], [80, 220, 120])
-    link_colors = ([255, 255, 0], [255, 128, 0], [0, 200, 255], [120, 255, 120])
+    if nfp == 4:
+        skeleton = ((0, 1), (1, 2), (2, 3), (3, 0))
+    else:
+        # 自适应：线性骨架链 0-1-2-...-（闭合环）
+        skeleton = tuple((i, (i + 1) % nfp) for i in range(nfp))
 
-    swap_map = {
-        'p1': 'p2',
-        'p2': 'p1',
-        'p3': 'p4',
-        'p4': 'p3',
-    }
+    palette = ([255, 80, 80], [80, 200, 255], [255, 200, 80], [80, 220, 120],
+               [200, 120, 255], [120, 255, 200], [255, 150, 200], [150, 200, 255])
+    keypoint_colors = [list(palette[i % len(palette)]) for i in range(nfp)]
+    link_colors = [list(palette[(i + 1) % len(palette)]) for i in range(nfp)]
+
+    # 左右翻转映射：4 点时 p1<->p2、p3<->p4；其余按 flip_idx 语义（默认不变）
+    if nfp == 4:
+        swap_map = {'p1': 'p2', 'p2': 'p1', 'p3': 'p4', 'p4': 'p3'}
+    else:
+        swap_map = {name: name for name in keypoint_names}
+
     keypoint_info = {
         idx: dict(
             name=name,

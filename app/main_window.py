@@ -174,6 +174,7 @@ class VisualTrainFactoryWindow(QMainWindow):
             return
         self.train_controller.sync_task_ui()
         self.inference_controller.sync_task_ui()
+        self.label_data_preview_controller.sync_task_ui()
 
 
     def _on_main_tab_changed(self, index):
@@ -216,6 +217,7 @@ class VisualTrainFactoryWindow(QMainWindow):
         self.btnTrainHrnet.clicked.connect(self.train_controller.run_hrnet_train)
         self.train_controller.sync_task_ui()
         self.inference_controller.sync_task_ui()
+        self.label_data_preview_controller.sync_task_ui()
         self.btnExportYoloOnnx.clicked.connect(self.inference_controller.export_yolo_onnx)
         self.btnExportHrnetOnnx.clicked.connect(self.inference_controller.export_hrnet_onnx)
         self.btnExportYoloEngine.clicked.connect(
@@ -444,6 +446,8 @@ class VisualTrainFactoryWindow(QMainWindow):
             "version": CONFIG_VERSION,
             "widgetState": self._collect_widget_state(),
             "labelMappingRows": self.label_data_preview_controller.collect_label_mapping_rows(),
+            "poseFormat": self.label_data_preview_controller.get_pose_format(),
+            "keypointOrderRows": self.label_data_preview_controller.collect_keypoint_order_rows(),
         }
 
     def _save_current_work_directory_state(self):
@@ -507,6 +511,9 @@ class VisualTrainFactoryWindow(QMainWindow):
 
         label_rows = payload.get("labelMappingRows", [])
         self.label_data_preview_controller.restore_label_mapping_rows(label_rows)
+        self.label_data_preview_controller.restore_pose_format_state(
+            payload.get("poseFormat", "legacy"), payload.get("keypointOrderRows", [])
+        )
         self._restore_widget_state(self.saved_widget_state)
         self.inference_controller.restore_save_part_label_panel(self.saved_widget_state)
         return True

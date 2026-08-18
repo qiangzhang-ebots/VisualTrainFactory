@@ -3,35 +3,53 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import re
 from pathlib import Path
 
 from app.constants import IMAGE_SUFFIXES, LabelUsage, current_model_task
 from app.controllers.base import TabController
 from app.label_scan import (
     LabelStats,
+    collect_label_shapes,
     detect_polygon_anomalies,
+    detect_rectangle_labels,
     extract_json_labels,
     format_label_type_text,
     get_dominant_polygon_points,
+    collect_point_labels,
 )
 from app.qt_imports import (
+    Qt,
     QAbstractItemView,
     QComboBox,
+    QHBoxLayout,
     QHeaderView,
     QLineEdit,
     QMessageBox,
+    QPushButton,
+    QRadioButton,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QVBoxLayout,
+    QWidget,
 )
 from app.task_runner import run_thread_with_process_events
-from app.theme import label_table_combo_stylesheet, label_table_line_edit_stylesheet, message_box_stylesheet
+from app.theme import (
+    label_table_combo_stylesheet,
+    label_table_line_edit_stylesheet,
+    label_table_stylesheet,
+    message_box_stylesheet,
+)
 from s1_dataJson2Train import (
     ConvertInfo,
+    compute_split_plan,
+    precheck_convert,
     process_filesHRNet,
     process_filesYoloFeaturePoint,
     process_filesYoloObb,
     process_filesYoloSeg,
+    write_pose_schema,
 )
 
 # 数据已经标注好了，划分训练集和验证集，预览标签映射。将标注数据写入到yolo,hrnet格式
@@ -42,6 +60,8 @@ class LabelDataPreviewController(TabController):
         self.label_id_edits = {}
         self.label_usage_combos = {}
         self.label_table = None
+        self.keypoint_order_table = None
+        self.saved_keypoint_order_rows = []
 
     def configure_ui(self):
         if not hasattr(self.window, "labelMapContainer") or self.window.labelMapContainer is None:
@@ -49,6 +69,8 @@ class LabelDataPreviewController(TabController):
             return
 
         self.window.labelMapContainer.setMinimumHeight(220)
+        table_ss = label_table_stylesheet()
+
         self.label_table = QTableWidget(self.window.labelMapContainer)
         self.label_table.setColumnCount(4)
         self.label_table.setHorizontalHeaderLabels(["Label", "类型", "训练时ID", "请选择用途"])
@@ -59,13 +81,127 @@ class LabelDataPreviewController(TabController):
         for column in range(4):
             self.label_table.horizontalHeader().setSectionResizeMode(column, QHeaderView.Stretch)
         self.label_table.setMinimumHeight(220)
+        self.label_table.setStyleSheet(table_ss)
+
+        # 新格式/旧格式单选按钮（仅 Pose 任务显示，OBB/SEG 下隐藏）
+        radio_new = QRadioButton("新格式（矩形=对象，点=关键点）")
+        radio_new.setObjectName("radioPoseFormatNew")
+        radio_legacy = QRadioButton("旧格式（polygon/line/point 按原有方式处理）")
+        radio_legacy.setObjectName("radioPoseFormatLegacy")
+        radio_legacy.setChecked(True)
+        self.window.radioPoseFormatNew = radio_new
+        self.window.radioPoseFormatLegacy = radio_legacy
+
+        radio_layout = QHBoxLayout()
+        radio_layout.setContentsMargins(0, 0, 0, 0)
+        radio_layout.addWidget(radio_new)
+        radio_layout.addWidget(radio_legacy)
+        radio_layout.addStretch()
+
+        # 关键点排序表（本阶段只做结构，不做扫描填充）
+        self.keypoint_order_table = QTableWidget(self.window.labelMapContainer)
+        self.keypoint_order_table.setColumnCount(2)
+        self.keypoint_order_table.setHorizontalHeaderLabels(["Point Label", "关键点序号"])
+        self.keypoint_order_table.setAlternatingRowColors(True)
+        self.keypoint_order_table.verticalHeader().setVisible(False)
+        self.keypoint_order_table.horizontalHeader().setStretchLastSection(False)
+        for column in range(2):
+            self.keypoint_order_table.horizontalHeader().setSectionResizeMode(column, QHeaderView.Stretch)
+        self.keypoint_order_table.setMinimumHeight(220)
+        self.keypoint_order_table.setStyleSheet(table_ss)
+
+        keypoint_layout = QVBoxLayout()
+        keypoint_layout.setContentsMargins(0, 0, 0, 0)
+        keypoint_layout.addWidget(self.keypoint_order_table)
+        keypoint_container = QWidget(self.window.labelMapContainer)
+        keypoint_container.setLayout(keypoint_layout)
+
+        # 对象类别映射表 / 关键点排序表
+        self.window.keypointTabWidget = QTabWidget(self.window.labelMapContainer)
+        self.window.keypointTabWidget.setObjectName("keypointTabWidget")
+        self.window.keypointTabWidget.addTab(self.label_table, "对象类别映射表")
+        self.window.keypointTabWidget.addTab(keypoint_container, "关键点排序表")
+        self.window.keypointTabWidget.setTabBarAutoHide(True)
 
         outer_layout = QVBoxLayout(self.window.labelMapContainer)
         outer_layout.setContentsMargins(0, 0, 0, 0)
-        outer_layout.addWidget(self.label_table)
+        outer_layout.addLayout(radio_layout)
+        outer_layout.addWidget(self.window.keypointTabWidget)
 
         self.window.labelTable = self.label_table
         self._populate_label_mapping_layout([])
+
+    def sync_task_ui(self):
+        """根据顶部任务单选按钮同步标签处理区域的可见性。
+
+        仅 Pose 任务显示新/旧格式单选按钮与「关键点排序表」Tab；
+        OBB / SEG 任务下两者隐藏，仅保留「对象类别映射表」。
+        """
+        is_pose = current_model_task(self.window) == "pose"
+        for radio_name in ("radioPoseFormatNew", "radioPoseFormatLegacy"):
+            radio = getattr(self.window, radio_name, None)
+            if radio is not None:
+                radio.setVisible(is_pose)
+        tab_widget = getattr(self.window, "keypointTabWidget", None)
+        if tab_widget is not None and tab_widget.count() > 1:
+            try:
+                tab_widget.setTabVisible(1, is_pose)
+            except AttributeError:
+                pass
+
+    def _insert_keypoint_order_row(self):
+        """Insert a single keypoint order row and register its spin widget."""
+        if self.keypoint_order_table is None:
+            return
+        row = self.keypoint_order_table.rowCount()
+        self.keypoint_order_table.insertRow(row)
+        self.keypoint_order_table.setItem(row, 0, QTableWidgetItem(""))
+        slot_item = QTableWidgetItem("0")
+        slot_item.setTextAlignment(Qt.AlignCenter)
+        self.keypoint_order_table.setItem(row, 1, slot_item)
+
+    def populate_keypoint_order_from_scan(self, point_labels):
+        """Reset-style populate: rebuild keypoint order table from scanned labels.
+
+        This clears previous rows and suggestions, then inserts rows for each
+        scanned label. All suggested slots are derived from label names and
+        any manual adjustments are not preserved.
+        """
+        if self.keypoint_order_table is None:
+            return
+        labels = sorted({str(label).strip() for label in point_labels if str(label).strip()})
+        if not labels:
+            return
+
+        used_slots = set()
+        self.keypoint_order_table.blockSignals(True)
+        # clear existing rows
+        self.keypoint_order_table.setRowCount(0)
+
+        for label_text in labels:
+            self._insert_keypoint_order_row()
+            last_row = self.keypoint_order_table.rowCount() - 1
+            self.keypoint_order_table.setItem(last_row, 0, QTableWidgetItem(label_text))
+            slot = self._suggest_slot_from_label(label_text, used_slots)
+            slot_item = QTableWidgetItem(str(slot))
+            slot_item.setTextAlignment(Qt.AlignCenter)
+            self.keypoint_order_table.setItem(last_row, 1, slot_item)
+            used_slots.add(slot)
+
+        self.keypoint_order_table.blockSignals(False)
+
+    @staticmethod
+    def _suggest_slot_from_label(label_text, used_slots):
+        """从标签名字中提取数字建议槽位（如 cap_01 -> 1）；不覆盖用户手改。"""
+        numbers = re.findall(r"\d+", str(label_text))
+        if numbers:
+            candidate = int(numbers[-1])
+            if 0 <= candidate <= 199 and candidate not in used_slots:
+                return candidate
+        slot = 0
+        while slot in used_slots:
+            slot += 1
+        return slot
 
     def on_enter(self):
         self.append_log('已切换到数据划分及预览页。可以点击"扫描所有文件"刷新 group_data 标签。')
@@ -97,6 +233,11 @@ class LabelDataPreviewController(TabController):
         polygon_point_histogram = {}
         polygon_records = []
         error_messages = []
+        point_labels = set()
+        is_new_pose_format = (
+            current_model_task(self.window) == "pose"
+            and self.get_pose_format() == "rectangle_point"
+        )
 
         for json_file in json_files:
             try:
@@ -105,6 +246,13 @@ class LabelDataPreviewController(TabController):
             except (OSError, json.JSONDecodeError) as exc:
                 error_messages.append(json_file.name)
                 self.append_log(f"解析 JSON 失败: {json_file} ({exc})")
+                continue
+
+            if is_new_pose_format:
+                # 新格式（矩形=对象，点=关键点）：对象类别只看 rectangle，关键点只看 point
+                rectangle_labels = detect_rectangle_labels(payload)
+                labels.update(rectangle_labels)
+                point_labels.update(collect_point_labels(payload))
                 continue
 
             extracted_labels, extracted_stats, polygon_entries = extract_json_labels(payload)
@@ -133,9 +281,16 @@ class LabelDataPreviewController(TabController):
             json_file_count=len(json_files),
             error_messages=error_messages,
             label_stats=stats_dict,
+            update_nfp=not is_new_pose_format,
         )
+
+        if is_new_pose_format:
+            self.populate_keypoint_order_from_scan(point_labels)
+
+        scan_detail = "新格式(rectangle_point)" if is_new_pose_format else "对象类别"
         self.append_log(
-            f"扫描完成: {len(all_files)} 个文件，其中 {len(json_files)} 个 JSON 文件，找到 {len(labels)} 个标签。"
+            f"扫描完成: {len(all_files)} 个文件，其中 {len(json_files)} 个 JSON 文件，"
+            f"找到 {len(labels)} 个{scan_detail}标签，{len(point_labels)} 个关键点标签。"
         )
 
     def run_train_data_split(self):
@@ -193,18 +348,25 @@ class LabelDataPreviewController(TabController):
         task = current_model_task(self.window)
         use_obb = task == "obb"
         use_seg = task == "seg"
+        use_pose = not use_seg and not use_obb
 
         def _run_split_process():
             buffer = io.StringIO()
             try:
                 with contextlib.redirect_stdout(buffer), contextlib.redirect_stderr(buffer):
+                    # 共享一次 train/val/test 划分，YOLO 与 HRNet 共用
+                    split_plan = compute_split_plan(convert_info)
+                    # 预检查：写入/删除 datasets 之前完成全部校验，任意错误即停止
+                    precheck_convert(convert_info, split_plan)
                     if use_seg:
-                        train_files, val_files, test_files = process_filesYoloSeg(convert_info)
+                        train_files, val_files, test_files = process_filesYoloSeg(convert_info, split_plan)
                     elif use_obb:
-                        train_files, val_files, test_files = process_filesYoloObb(convert_info)
+                        train_files, val_files, test_files = process_filesYoloObb(convert_info, split_plan)
                     else:
-                        train_files, val_files, test_files = process_filesYoloFeaturePoint(convert_info)
-                        process_filesHRNet(convert_info)
+                        train_files, val_files, test_files = process_filesYoloFeaturePoint(convert_info, split_plan)
+                        process_filesHRNet(convert_info, split_plan)
+                        if convert_info.PoseFormat == "rectangle_point":
+                            write_pose_schema(convert_info)
                 result_holder["train_files"] = train_files
                 result_holder["val_files"] = val_files
                 result_holder["test_files"] = test_files
@@ -214,11 +376,14 @@ class LabelDataPreviewController(TabController):
                 result_holder["stdout"] = buffer.getvalue()
 
         task_name = "分割" if use_seg else ("obb" if use_obb else "关键点")
+        pose_format_text = (
+            f", PoseFormat={convert_info.PoseFormat}" if use_pose else ""
+        )
         self.append_log(
             f"开始划分数据({task_name}): "
             f"Append={convert_info.Append}, TrainRatio={convert_info.TrainRatio}, "
             f"ValRatio={convert_info.ValRatio}, TestRatio={convert_info.TestRatio}, "
-            f"Seed={convert_info.Seed}, NFP={convert_info.NFP}"
+            f"Seed={convert_info.Seed}, NFP={convert_info.NFP}{pose_format_text}"
         )
 
         run_thread_with_process_events(_run_split_process)
@@ -272,6 +437,72 @@ class LabelDataPreviewController(TabController):
             return
         self.refresh_preview_label_scan_result(label_names, label_stats={})
 
+    def get_pose_format(self):
+        """返回当前姿态数据格式: 'rectangle_point'（新格式）或 'legacy'（旧格式）。"""
+        radio_new = getattr(self.window, "radioPoseFormatNew", None)
+        if radio_new is not None and radio_new.isChecked():
+            return "rectangle_point"
+        return "legacy"
+
+    def collect_keypoint_order_rows(self):
+        """收集关键点排序表内容（跳过 label 为空的行）。"""
+        rows = []
+        if self.keypoint_order_table is None:
+            return rows
+        for row in range(self.keypoint_order_table.rowCount()):
+            label_item = self.keypoint_order_table.item(row, 0)
+            label_text = "" if label_item is None else label_item.text().strip()
+            if not label_text:
+                continue
+            slot_item = self.keypoint_order_table.item(row, 1)
+            try:
+                slot = int(str(slot_item.text()).strip()) if slot_item is not None else 0
+            except (TypeError, ValueError):
+                slot = 0
+            rows.append({"label": label_text, "slot": slot})
+        return rows
+
+    def restore_pose_format_state(self, pose_format, keypoint_rows):
+        """恢复姿态格式单选与关键点排序表内容。"""
+        radio_new = getattr(self.window, "radioPoseFormatNew", None)
+        radio_legacy = getattr(self.window, "radioPoseFormatLegacy", None)
+        is_new_format = pose_format == "rectangle_point"
+        if radio_new is not None:
+            radio_new.blockSignals(True)
+            radio_new.setChecked(is_new_format)
+            radio_new.blockSignals(False)
+        if radio_legacy is not None:
+            radio_legacy.blockSignals(True)
+            radio_legacy.setChecked(not is_new_format)
+            radio_legacy.blockSignals(False)
+        self._populate_keypoint_order_rows(keypoint_rows)
+
+    def _populate_keypoint_order_rows(self, rows):
+        if self.keypoint_order_table is None:
+            return
+        valid_rows = [
+            row
+            for row in (rows or [])
+            if isinstance(row, dict) and str(row.get("label", "")).strip()
+        ]
+        self.saved_keypoint_order_rows = valid_rows
+
+        self.keypoint_order_table.blockSignals(True)
+        self.keypoint_order_table.setRowCount(0)
+        for row_payload in valid_rows:
+            self._insert_keypoint_order_row()
+            last_row = self.keypoint_order_table.rowCount() - 1
+            label_text = str(row_payload.get("label", "")).strip()
+            self.keypoint_order_table.setItem(last_row, 0, QTableWidgetItem(label_text))
+            try:
+                slot = max(0, min(199, int(row_payload.get("slot", 0))))
+            except (TypeError, ValueError):
+                slot = 0
+            slot_item = QTableWidgetItem(str(slot))
+            slot_item.setTextAlignment(Qt.AlignCenter)
+            self.keypoint_order_table.setItem(last_row, 1, slot_item)
+        self.keypoint_order_table.blockSignals(False)
+
     def get_label_id_mapping(self):
         mapping = {}
         for label_text, line_edit in self.label_id_edits.items():
@@ -289,12 +520,17 @@ class LabelDataPreviewController(TabController):
         json_file_count=0,
         error_messages=None,
         label_stats=None,
+        update_nfp=True,
     ):
         label_stats = label_stats or {}
         sorted_labels = sorted({label.strip() for label in labels if str(label).strip()})
         self._populate_label_mapping_layout(sorted_labels, label_stats=label_stats)
 
-        if hasattr(self.window, "lineEditNumFeaturePoints") and self.window.lineEditNumFeaturePoints is not None:
+        if (
+            update_nfp
+            and hasattr(self.window, "lineEditNumFeaturePoints")
+            and self.window.lineEditNumFeaturePoints is not None
+        ):
             parsed_stats = {
                 key: LabelStats.from_dict(value) if isinstance(value, dict) else value
                 for key, value in label_stats.items()
@@ -422,7 +658,42 @@ class LabelDataPreviewController(TabController):
             self.append_log('没有读取到可用的标签映射，请先扫描并设置"训练时ID"。')
             return None
 
+        task = current_model_task(self.window)
+        if task == "pose":
+            convert_info.PoseFormat = self.get_pose_format()
+            if convert_info.PoseFormat == "rectangle_point":
+                keypoint_map = self._collect_keypoint_order_map()
+                if keypoint_map is None:
+                    return None
+                # 界面槽位即内部槽位（0..N-1，与对象训练时ID保持一致）
+                convert_info.KeypointOrder = dict(keypoint_map)
+                convert_info.NFP = len(keypoint_map)
+        else:
+            convert_info.PoseFormat = "legacy"
+
         return convert_info
+
+    def _collect_keypoint_order_map(self):
+        """校验关键点排序表并返回 {label: slot}（slot 从 0 开始）。
+
+        校验：至少一行、序号唯一、从 0 开始连续递增。失败返回 None 并提示。
+        """
+        rows = self.collect_keypoint_order_rows()
+        if not rows:
+            self.append_log("新格式需要先在「关键点排序表」中填写至少一行 Point Label。")
+            return None
+        labels = [row["label"] for row in rows]
+        slots = [row["slot"] for row in rows]
+        if len(set(labels)) != len(labels):
+            self.append_log("关键点排序表中存在重复的 Point Label。")
+            return None
+        if len(set(slots)) != len(slots):
+            self.append_log("关键点排序表中序号重复，每个序号只能使用一次。")
+            return None
+        if sorted(slots) != list(range(0, len(slots))):
+            self.append_log("关键点排序表序号有空号，必须从 0 开始连续递增。")
+            return None
+        return dict(zip(labels, slots))
 
     def _collect_label2int_mapping(self):
         mapping = {}
